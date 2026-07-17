@@ -1,0 +1,364 @@
+/* ── Reset & Base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:               #f5f5f5;
+  --surface:          #ffffff;
+  --surface2:         #f8f9fa;
+  --border:           #dee2e6;
+  --text:             #343a40;
+  --text-muted:       #868e96;
+  --text-code:        #2b2b2b;
+  --accent:           #228be6;
+  --model-color:      #2f9e44;
+  --pair-border:      #e9ecef;
+  --tool-bg:          #fff9db;
+  --tool-border:      #ffd43b;
+  --reasoning-bg:     #f8f0fc;
+  --reasoning-border: #cc5de8;
+  --response-bg:      #f0f4ff;
+  --response-border:  #74c0fc;
+}
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", "Noto Sans JP", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* ── Header ── */
+.app-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 20px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.app-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.app-summary {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.session-title {
+  font-size: 14px;
+  color: var(--text);
+  font-weight: 600;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface2);
+}
+.session-datetime {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.app-action {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0b7285;
+  text-decoration: none;
+  border: 1px solid #99e9f2;
+  background: #e3fafc;
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
+/* ── Main ── */
+.main {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+/* ── Block ── */
+.block {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+.block-header {
+  padding: 8px 12px;
+  background: #2d2d2d;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ── Total Credits badge ── */
+.total-credits {
+  background: #fff200;
+  color: #000000;
+  font-size: 19px;
+  font-weight: bold;
+  padding: 4px 12px;
+  display: inline-block;
+  border-radius: 4px;
+}
+
+/* ── User Request / Attachments ── */
+.user-message-card {
+  padding: 12px 16px;
+  background: #252526;
+  border-bottom: 1px solid #3c3c3c;
+}
+.user-message-text {
+  font-family: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 15px;
+  color: #d4d4d4;
+}
+.attachments-card {
+  margin-top: 10px;
+  border: 1px solid #4c4d4f;
+  border-radius: 6px;
+  background: #1f1f1f;
+  overflow: hidden;
+}
+.attachments-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #a5d8ff;
+  background: #2b3035;
+  padding: 6px 10px;
+  border-bottom: 1px solid #4c4d4f;
+}
+.attachment-item {
+  padding: 8px 10px;
+  border-bottom: 1px dashed #3c3c3c;
+  display: grid;
+  gap: 4px;
+}
+.attachment-item:last-child {
+  border-bottom: none;
+}
+.attachment-id {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffd43b;
+  font-family: "Consolas", "Courier New", monospace;
+}
+.attachment-path {
+  font-size: 12px;
+  color: #adb5bd;
+  word-break: break-all;
+  font-family: "Consolas", "Courier New", monospace;
+}
+
+/* ── Pair card (llm_request + agent_response) ── */
+.pair-card {
+  border-top: 1px solid var(--pair-border);
+  padding: 12px 16px;
+}
+.pair-card + .pair-card {
+  border-top: 2px dashed var(--pair-border);
+}
+
+/* ── LLM Meta (クリックで展開) ── */
+.llm-meta {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 2px;
+  transition: background 0.15s;
+}
+.llm-meta:hover {
+  background: #f1f3f5;
+}
+.llm-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.model-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--model-color);
+}
+.credits-inline {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e67700;
+}
+.subagent-inline {
+  font-size: 12px;
+  font-weight: 700;
+  color: #000000;
+  background: #fff200;
+  border: 1px solid #e6cc00;
+  border-radius: 12px;
+  padding: 2px 8px;
+}
+.token-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.token-badge {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-family: "Consolas", monospace;
+}
+.token-badge.input   { background: #e7f5ff; color: #1864ab; border: 1px solid #a5d8ff; }
+.token-badge.cached  { background: #f3f0ff; color: #5f3dc4; border: 1px solid #b197fc; }
+.token-badge.output  { background: #ebfbee; color: #1b4332; border: 1px solid #8ce99a; }
+.token-badge.cache   { background: #fff3bf; color: #5c4500; border: 1px solid #ffd43b; font-weight: 600; }
+
+/* ── Section (Reasoning / Response) ── */
+.section-header, .tool-call-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 4px;
+  user-select: none;
+  transition: background 0.15s;
+}
+.section-header:hover { background: rgba(0,0,0,0.04); }
+.section-icon, .tool-icon { font-size: 14px; }
+.section-label { font-size: 13px; font-weight: 600; color: var(--text-muted); }
+.toggle-arrow { font-size: 10px; color: var(--text-muted); margin-left: auto; }
+
+/* ── Reasoning ── */
+.reasoning-block {
+  margin: 6px 0;
+  border: 1px solid var(--reasoning-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.reasoning-block .section-header {
+  background: var(--reasoning-bg);
+  border-radius: 0;
+}
+.reasoning-body {
+  background: var(--reasoning-bg);
+  border-top: 1px solid var(--reasoning-border);
+  padding: 10px 12px;
+  font-size: 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #4a1a68;
+}
+
+/* ── Response ── */
+.response-block {
+  margin: 6px 0;
+}
+.response-text {
+  background: var(--response-bg);
+  border-left: 3px solid var(--response-border);
+  padding: 8px 12px;
+  border-radius: 0 4px 4px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 14px;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+/* ── Pair Body (折りたたみコンテンツ) ── */
+.pair-body {
+  padding-top: 6px;
+}
+
+/* ── Tool Call ── */
+.tool-call {
+  margin: 4px 0;
+  border: 1px solid var(--tool-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.tool-call-header {
+  background: var(--tool-bg);
+  border-radius: 0;
+  padding: 6px 10px;
+}
+.tool-call-header:hover { background: #fff3c4; }
+.tool-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #5c4500;
+  font-family: "Consolas", monospace;
+}
+.tool-args {
+  background: #fffce8;
+  border-top: 1px solid var(--tool-border);
+  padding: 10px 12px;
+  font-size: 13px;
+  font-family: "Consolas", "Courier New", monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text-code);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* ── SubAgent Inline Panel ── */
+.subagent-action-row {
+  padding: 8px 10px;
+  border-top: 1px dashed var(--tool-border);
+  background: #fffbe6;
+}
+.subagent-toggle-btn {
+  border: 1px solid #f08c00;
+  background: #fff4e6;
+  color: #9c4f00;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.subagent-toggle-btn:hover {
+  background: #ffe8cc;
+}
+.subagent-missing {
+  font-size: 12px;
+  color: #b08900;
+}
+.subagent-panel {
+  border-top: 1px solid var(--tool-border);
+  background: #fffdf5;
+}
+.subagent-panel-meta {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #7a5c00;
+  border-bottom: 1px solid #ffe8a1;
+  font-family: "Consolas", "Courier New", monospace;
+}
+.subagent-title {
+  color: #5f3dc4;
+  font-weight: 700;
+}
+.subagent-panel-summary {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #495057;
+  border-bottom: 1px solid #f1f3f5;
+}
+.subagent-rendered {
+  padding: 10px;
+  max-height: 520px;
+  overflow-y: auto;
+}
+.subagent-rendered .block {
+  margin-bottom: 12px;
+}
+.subagent-rendered .block:last-child {
+  margin-bottom: 0;
+}
