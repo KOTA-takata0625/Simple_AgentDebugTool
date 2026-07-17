@@ -1,0 +1,25 @@
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS/editor artifacts
+.DS_Store
+.vscode/
+
+# Local outputs and logs
+*.log
+viewer.html
+
+# Generated index file
+data/sessions_index.json
