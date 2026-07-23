@@ -7,16 +7,19 @@ set -euo pipefail
 export WORKSPACE_STORAGE_DIR="$HOME/.vscode-server/data/User/workspaceStorage"
 
 # Usage:
-#   ./start_ai_logview.sh [YYYY-MM-DD] [--host 127.0.0.1] [--port 5001] [--python-bin python3]
+#   ./start_ai_logview.sh [--host 127.0.0.1] [--port 5001] [--python-bin python3]
+#   ./start_ai_logview.sh --use-index [YYYY-MM-DD]
 
 DATE_ARG=""
 HOST="127.0.0.1"
 PORT="5001"
 PYTHON_BIN="python3"
 DATE=""
+USE_INDEX="false"
 
 usage() {
-  echo "Usage: ./start_ai_logview.sh [YYYY-MM-DD] [--date YYYY-MM-DD] [--host 127.0.0.1] [--port 5001] [--python-bin python3]"
+  echo "Usage: ./start_ai_logview.sh [--host 127.0.0.1] [--port 5001] [--python-bin python3] [--use-index [YYYY-MM-DD]]"
+  echo "       ./start_ai_logview.sh --use-index --date YYYY-MM-DD [--host 127.0.0.1] [--port 5001] [--python-bin python3]"
   echo "workspaceStorage is configured in this script: WORKSPACE_STORAGE_DIR"
 }
 
@@ -63,6 +66,10 @@ parse_args() {
         fi
         PYTHON_BIN="$2"
         shift 2
+        ;;
+      --use-index)
+        USE_INDEX="true"
+        shift
         ;;
       *)
         echo "unknown option: $1" >&2
@@ -138,8 +145,20 @@ main() {
   finder_script="$root_dir/src_parse/find_debug_logs.sh"
 
   validate_runtime "$workspace_storage" "$PYTHON_BIN" "$finder_script"
-  build_sessions_index "$root_dir" "$finder_script" "$index_file"
-  start_app "$root_dir" "$index_file" "$finder_script"
+
+  if [[ "$USE_INDEX" == "true" ]]; then
+    build_sessions_index "$root_dir" "$finder_script" "$index_file"
+    start_app "$root_dir" "$index_file" "$finder_script"
+  else
+    if [[ -n "$DATE_ARG" ]]; then
+      echo "note: positional date '$DATE_ARG' is ignored unless --use-index is specified" >&2
+    fi
+    echo "[1/1] Start app (live mode: no prebuilt index)"
+    "$PYTHON_BIN" "$root_dir/src_view/web_app.py" \
+      --finder-script "$finder_script" \
+      --host "$HOST" \
+      --port "$PORT"
+  fi
 }
 
 main "$@"

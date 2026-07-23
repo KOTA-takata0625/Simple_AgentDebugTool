@@ -201,21 +201,6 @@ body {
   border-radius: 12px;
   padding: 2px 8px;
 }
-.token-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.token-badge {
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-family: "Consolas", monospace;
-}
-.token-badge.input   { background: #e7f5ff; color: #1864ab; border: 1px solid #a5d8ff; }
-.token-badge.cached  { background: #f3f0ff; color: #5f3dc4; border: 1px solid #b197fc; }
-.token-badge.output  { background: #ebfbee; color: #1b4332; border: 1px solid #8ce99a; }
-.token-badge.cache   { background: #fff3bf; color: #5c4500; border: 1px solid #ffd43b; font-weight: 600; }
 
 /* ── Section (Reasoning / Response) ── */
 .section-header, .tool-call-header {

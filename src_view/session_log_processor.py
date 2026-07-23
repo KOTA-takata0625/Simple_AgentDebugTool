@@ -82,6 +82,22 @@ def parse_session_datetime(dt_text: str) -> float:
     return 0.0
 
 
+def session_filter_reason(dt_text: str, date_str: str) -> str | None:
+    if not dt_text:
+        return "session_title.datetime is empty"
+    for fmt in ("%Y-%m-%d %H:%M:%S JST", "%Y-%m-%d %H:%M:%S"):
+        try:
+            parsed_date = datetime.strptime(dt_text, fmt).strftime("%Y-%m-%d")
+            if parsed_date != date_str:
+                return f"date mismatch ({parsed_date} != {date_str})"
+            return None
+        except ValueError:
+            continue
+    if dt_text.startswith(f"{date_str} "):
+        return None
+    return f"unparseable session_title.datetime: {dt_text}"
+
+
 def collect_session_summaries(
     date_str: str,
     finder_script: Path,
@@ -120,6 +136,7 @@ def collect_session_summaries(
 
     entries = []
     skipped = 0
+    filtered = 0
     for d in debug_dirs:
         extracted = ensure_extracted_main_fn(d)
         if extracted is None:
@@ -138,6 +155,12 @@ def collect_session_summaries(
             total_credits = round(main_total + sub_total, 1)
             title = (session.get("content") or "").strip() or d.name
             dt_text = (session.get("datetime") or "").strip()
+
+            filter_reason = session_filter_reason(dt_text, date_str)
+            if filter_reason is not None:
+                filtered += 1
+                continue
+
             entries.append(
                 {
                     "title": title,
@@ -155,4 +178,6 @@ def collect_session_summaries(
     info = f"{len(entries)} sessions"
     if skipped:
         info += f" (skipped {skipped})"
+    if filtered:
+        info += f" (filtered {filtered})"
     return entries, info

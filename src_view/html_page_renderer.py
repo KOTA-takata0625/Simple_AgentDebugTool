@@ -379,10 +379,11 @@ def render_sessions_page(
                 rows.append(row)
 
         rows_html = "\n".join(rows) if rows else '<div class="empty">表示対象がありません</div>'
-        action_html = ""
+        action_items = ['<a href="/">日付選択へ</a>']
         if default_file is not None:
             default_href = f"/view?file={quote(str(default_file))}"
-            action_html = f'<span class="actions"><a href="{default_href}">既定ログを開く</a></span>'
+            action_items.append(f'<a href="{default_href}">既定ログを開く</a>')
+        action_html = f'<span class="actions">{"".join(action_items)}</span>'
 
         list_html = rows_html
         if rows:
@@ -630,6 +631,164 @@ body {{
             {action_html}
         </div>
         {list_html}
+    </main>
+</body>
+</html>"""
+
+
+def render_date_landing_page(
+    date_rows: list[dict],
+    app_version: str = "0.0",
+) -> str:
+    rows = []
+    for item in date_rows:
+        date_str = str(item.get("date", "")).strip()
+        if not date_str:
+            continue
+
+        count = int(item.get("count", 0) or 0)
+        source = str(item.get("source", "live")).strip() or "live"
+        href = f"/?date={quote(date_str)}"
+        rows.append(
+            f'<a class="date-row" href="{href}">'
+            f'<span class="date-main">{e(date_str)}</span>'
+            f'<span class="date-right">'
+            f'<span class="date-count">{count}件</span>'
+            f'<span class="date-source">{e(source)}</span>'
+            f'<span class="date-action">この日のセッションへ</span>'
+            f"</span>"
+            f"</a>"
+        )
+
+    list_html = "\n".join(rows) if rows else '<div class="empty">表示できる日付がありません</div>'
+
+    return f"""<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Log Dates</title>
+<style>
+* {{ box-sizing: border-box; }}
+body {{
+    margin: 0;
+    font-family: "Segoe UI", "Noto Sans JP", system-ui, sans-serif;
+    background: #f5f5f5;
+    color: #343a40;
+}}
+.wrap {{
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px 16px 32px;
+}}
+.head {{
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}}
+.title {{
+    font-size: 22px;
+    font-weight: 800;
+    color: #1c7ed6;
+}}
+.version {{
+    font-size: 12px;
+    font-weight: 700;
+    color: #495057;
+    border: 1px solid #ced4da;
+    background: #ffffff;
+    border-radius: 999px;
+    padding: 3px 8px;
+}}
+.meta {{
+    color: #6c757d;
+    font-size: 13px;
+}}
+.list {{
+    display: grid;
+    gap: 10px;
+}}
+.date-row {{
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: center;
+    padding: 12px 14px;
+    background: #ffffff;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    text-decoration: none;
+}}
+.date-row:hover {{
+    border-color: #74c0fc;
+    background: #f8fbff;
+}}
+.date-main {{
+    color: #212529;
+    font-weight: 700;
+}}
+.date-right {{
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}}
+.date-count {{
+    color: #343a40;
+    font-size: 13px;
+    border: 1px solid #ced4da;
+    background: #ffffff;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-weight: 700;
+}}
+.date-source {{
+    color: #495057;
+    font-size: 12px;
+    border: 1px solid #dee2e6;
+    background: #f8f9fa;
+    border-radius: 999px;
+    padding: 4px 8px;
+}}
+.date-action {{
+    color: #0b7285;
+    font-size: 13px;
+    border: 1px solid #99e9f2;
+    background: #e3fafc;
+    border-radius: 999px;
+    padding: 4px 10px;
+}}
+.empty {{
+    padding: 20px;
+    border: 1px dashed #ced4da;
+    background: #fff;
+    border-radius: 8px;
+    color: #868e96;
+}}
+@media (max-width: 700px) {{
+    .date-row {{
+        flex-direction: column;
+        align-items: flex-start;
+    }}
+    .date-right {{
+        justify-content: flex-start;
+    }}
+}}
+</style>
+</head>
+<body>
+    <main class="wrap">
+        <div class="head">
+            <span class="title">AI Log Dates</span>
+            <span class="version">v{e(app_version)}</span>
+            <span class="meta">直近30日から日付を選択</span>
+        </div>
+        <section class="list">
+            {list_html}
+        </section>
     </main>
 </body>
 </html>"""

@@ -7,7 +7,7 @@ Usage: python3 web_app.py [--sessions-index path/to/sessions_index.json] [--host
 
 import argparse
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
@@ -17,6 +17,7 @@ from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, Response
 
 from html_page_renderer import e
+from html_page_renderer import render_date_landing_page as ren_render_date_landing_page
 from html_page_renderer import render_page as ren_render_page
 from html_page_renderer import render_sessions_page as ren_render_sessions_page
 from log_data_io import build_sessions_zip as io_build_sessions_zip
@@ -53,6 +54,53 @@ def create_app(
     app = FastAPI(title=f"AI Log Viewer v{app_version}")
     finder_path = finder_script or (Path.home() / "find_debug_logs.sh")
 
+    def _recent_dates(days: int = 30) -> list[str]:
+        today = datetime.now().date()
+        return [
+            (today - timedelta(days=delta)).strftime("%Y-%m-%d")
+            for delta in range(days)
+        ]
+
+    def _build_date_rows(days: int = 30) -> list[dict]:
+        dates = _recent_dates(days)
+        index_entries: list = []
+        index_date = ""
+        if sessions_index_path is not None:
+            index_entries, index_date, _ = io_load_sessions_index(sessions_index_path)
+
+        rows = []
+        for date_str in dates:
+            source = "live"
+            if index_date and date_str == index_date:
+                count = len(index_entries)
+                source = "index"
+            else:
+                entries, _ = svc_collect_session_summaries(date_str, finder_path)
+                count = len(entries)
+
+            rows.append(
+                {
+                    "date": date_str,
+                    "count": count,
+                    "source": source,
+                }
+            )
+
+        return rows
+
+    def _collect_entries_for_date(target_date: str) -> tuple[list, str]:
+        if sessions_index_path is not None:
+            entries, index_date, index_info = io_load_sessions_index(sessions_index_path)
+            if not index_date or target_date == index_date:
+                return entries, f"{index_info} - source=index"
+
+            live_entries, live_info = svc_collect_session_summaries(target_date, finder_path)
+            index_hint = f"index-date={index_date}" if index_date else "index-date=unknown"
+            return live_entries, f"{live_info} - source=live ({index_hint})"
+
+        entries, info = svc_collect_session_summaries(target_date, finder_path)
+        return entries, f"{info} - source=live"
+
     def _build_zip_response(files: list[str]):
         zip_bytes, filename, included_count = io_build_sessions_zip(
             files,
@@ -70,17 +118,13 @@ def create_app(
         )
 
     @app.get("/", response_class=HTMLResponse)
-    def sessions(date: Optional[str] = Query(default=None, description="YYYY-MM-DD")):
-        if sessions_index_path is not None:
-            entries, index_date, index_info = io_load_sessions_index(sessions_index_path)
-            target_date = date or index_date or datetime.now().strftime("%Y-%m-%d")
-            info = f"{index_info} - source=index"
-            html = ren_render_sessions_page(target_date, entries, info, None, app_version=app_version)
+    def root(date: Optional[str] = Query(default=None, description="YYYY-MM-DD")):
+        if not date:
+            html = ren_render_date_landing_page(_build_date_rows(30), app_version=app_version)
             return HTMLResponse(content=html)
 
-        target_date = date or datetime.now().strftime("%Y-%m-%d")
-        entries, info = svc_collect_session_summaries(target_date, finder_path)
-        info = f"{info} - source=live"
+        target_date = date.strip()
+        entries, info = _collect_entries_for_date(target_date)
         html = ren_render_sessions_page(target_date, entries, info, None, app_version=app_version)
         return HTMLResponse(content=html)
 

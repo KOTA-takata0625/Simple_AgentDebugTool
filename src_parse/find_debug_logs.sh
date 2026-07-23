@@ -19,13 +19,9 @@ if [[ ! -d "$BASE_DIR" ]]; then
   exit 1
 fi
 
-NEXT_DATE="$(date -d "$TARGET_DATE + 1 day" +%Y-%m-%d)"
-
 find "$BASE_DIR" \
   -mindepth 4 \
   -maxdepth 4 \
   -type d \
   -path "*/GitHub.copilot-chat/debug-logs/*" \
-  -newermt "${TARGET_DATE} 00:00:00" \
-  ! -newermt "${NEXT_DATE} 00:00:00" \
   | sort
