@@ -30,7 +30,7 @@ from session_view_service import collect_session_summaries as svc_collect_sessio
 from session_view_service import load_subagent_entries as svc_load_subagent_entries
 
 
-VERSION_PATTERN = re.compile(r"^\d+\.\d$")
+VERSION_PATTERN = re.compile(r"^(?:v)?(\d+\.\d)$", re.IGNORECASE)
 DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MONTH_PATTERN = re.compile(r"^\d{4}-\d{2}$")
 
@@ -42,7 +42,12 @@ def load_app_version() -> str:
     except OSError:
         return "0.0"
 
-    return version if VERSION_PATTERN.fullmatch(version) else "0.0"
+    matched = VERSION_PATTERN.fullmatch(version)
+    if not matched:
+        return "0.0"
+
+    # Normalize VERSION to X.Y because rendering adds the "v" prefix.
+    return matched.group(1)
 
 # ─────────────────────────────────────────────
 # App Factory
