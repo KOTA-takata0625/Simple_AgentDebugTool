@@ -156,8 +156,13 @@ def collect_session_summaries(
             title = (session.get("content") or "").strip() or d.name
             dt_text = (session.get("datetime") or "").strip()
 
-            filter_reason = session_filter_reason(dt_text, date_str)
-            if filter_reason is not None:
+            main_jsonl = d / "main.jsonl"
+            if main_jsonl.exists():
+                session_date = datetime.fromtimestamp(main_jsonl.stat().st_mtime).strftime("%Y-%m-%d")
+            else:
+                session_date = datetime.fromtimestamp(d.stat().st_mtime).strftime("%Y-%m-%d")
+
+            if session_date != date_str:
                 filtered += 1
                 continue
 

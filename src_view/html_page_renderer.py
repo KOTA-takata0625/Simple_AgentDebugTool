@@ -637,30 +637,56 @@ body {{
 
 
 def render_date_landing_page(
-    date_rows: list[dict],
+    calendar_data: dict,
     app_version: str = "0.0",
 ) -> str:
-    rows = []
-    for item in date_rows:
-        date_str = str(item.get("date", "")).strip()
-        if not date_str:
+    month_label = e(calendar_data.get("month_label", ""))
+    prev_month = str(calendar_data.get("prev_month", "")).strip()
+    next_month = str(calendar_data.get("next_month", "")).strip()
+    cells = calendar_data.get("cells", [])
+
+    weekdays = ["月", "火", "水", "木", "金", "土", "日"]
+    weekday_html = "".join(f'<div class="weekday">{d}</div>' for d in weekdays)
+
+    cell_html_parts = []
+    for cell in cells:
+        if cell is None:
+            cell_html_parts.append('<div class="cal-cell cal-empty"></div>')
             continue
 
-        count = int(item.get("count", 0) or 0)
-        source = str(item.get("source", "live")).strip() or "live"
-        href = f"/?date={quote(date_str)}"
-        rows.append(
-            f'<a class="date-row" href="{href}">'
-            f'<span class="date-main">{e(date_str)}</span>'
-            f'<span class="date-right">'
-            f'<span class="date-count">{count}件</span>'
-            f'<span class="date-source">{e(source)}</span>'
-            f'<span class="date-action">この日のセッションへ</span>'
-            f"</span>"
-            f"</a>"
+        date_text = str(cell.get("date", "")).strip()
+        day_num = int(cell.get("day", 0) or 0)
+        count = int(cell.get("count", 0) or 0)
+        credits_total = float(cell.get("credits_total", 0.0) or 0.0)
+        source = str(cell.get("source", "live")).strip() or "live"
+        today_class = " is-today" if cell.get("is_today") else ""
+
+        body_html = (
+            f'<span class="day-number">{day_num}</span>'
+            f'<span class="day-count">{count}件</span>'
+            f'<span class="day-credits">{credits_total:.1f} AIU</span>'
+            f'<span class="day-source">{e(source)}</span>'
         )
 
-    list_html = "\n".join(rows) if rows else '<div class="empty">表示できる日付がありません</div>'
+        if count > 0:
+            href = f"/?date={quote(date_text)}"
+            cell_html_parts.append(
+                f'<a class="cal-cell is-active{today_class}" href="{href}" title="{e(date_text)}">'
+                f"{body_html}"
+                f"</a>"
+            )
+        else:
+            cell_html_parts.append(
+                f'<div class="cal-cell is-disabled{today_class}" title="{e(date_text)} (0件)">'
+                f"{body_html}"
+                f"</div>"
+            )
+
+    cells_html = "\n".join(cell_html_parts) if cell_html_parts else '<div class="empty">表示できる日付がありません</div>'
+    prev_href = f"/?month={quote(prev_month)}" if prev_month else "/"
+    next_href = f"/?month={quote(next_month)}" if next_month else "/"
+    month_credits_total = float(calendar_data.get("month_credits_total", 0.0) or 0.0)
+    month_credits_html = f'<span class="month-credits-total">{month_credits_total:.1f} AIU / 月</span>'
 
     return f"""<!DOCTYPE html>
 <html lang="ja">
@@ -706,62 +732,111 @@ body {{
     color: #6c757d;
     font-size: 13px;
 }}
-.list {{
-    display: grid;
-    gap: 10px;
-}}
-.date-row {{
+.month-nav {{
     display: flex;
+    align-items: center;
     justify-content: space-between;
-    gap: 10px;
-    align-items: center;
-    padding: 12px 14px;
-    background: #ffffff;
-    border: 1px solid #dee2e6;
-    border-radius: 8px;
-    text-decoration: none;
-}}
-.date-row:hover {{
-    border-color: #74c0fc;
-    background: #f8fbff;
-}}
-.date-main {{
-    color: #212529;
-    font-weight: 700;
-}}
-.date-right {{
-    display: inline-flex;
-    align-items: center;
     gap: 8px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
+    margin-bottom: 12px;
 }}
-.date-count {{
-    color: #343a40;
-    font-size: 13px;
-    border: 1px solid #ced4da;
-    background: #ffffff;
-    border-radius: 999px;
-    padding: 4px 10px;
-    font-weight: 700;
-}}
-.date-source {{
-    color: #495057;
-    font-size: 12px;
-    border: 1px solid #dee2e6;
-    background: #f8f9fa;
-    border-radius: 999px;
-    padding: 4px 8px;
-}}
-.date-action {{
+.month-link {{
     color: #0b7285;
-    font-size: 13px;
+    text-decoration: none;
     border: 1px solid #99e9f2;
     background: #e3fafc;
     border-radius: 999px;
     padding: 4px 10px;
+    font-size: 13px;
+    font-weight: 700;
+}}
+.month-label {{
+    color: #343a40;
+    font-weight: 800;
+}}
+.month-center {{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}}
+.month-credits-total {{
+    color: #1c7ed6;
+    font-size: 13px;
+    font-weight: 700;
+}}
+.calendar {{
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 10px;
+}}
+.weekday {{
+    text-align: center;
+    color: #495057;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 0;
+}}
+.cal-cell {{
+    min-height: 92px;
+    border: 1px solid #dee2e6;
+    border-radius: 10px;
+    background: #ffffff;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}}
+.cal-empty {{
+    border-style: dashed;
+    background: #f8f9fa;
+}}
+.cal-cell.is-active {{
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}}
+.cal-cell.is-active:hover {{
+    border-color: #74c0fc;
+    background: #f8fbff;
+}}
+.cal-cell.is-disabled {{
+    background: #f1f3f5;
+    border-color: #dee2e6;
+    opacity: 0.8;
+}}
+.cal-cell.is-today {{
+    box-shadow: inset 0 0 0 2px #74c0fc;
+}}
+.day-number {{
+    color: #212529;
+    font-size: 16px;
+    font-weight: 700;
+}}
+.day-count {{
+    width: fit-content;
+    color: #343a40;
+    font-size: 12px;
+    border: 1px solid #ced4da;
+    background: #ffffff;
+    border-radius: 999px;
+    padding: 4px 8px;
+}}
+.day-credits {{
+    color: #495057;
+    font-size: 12px;
+    font-weight: 700;
+}}
+.day-source {{
+    color: #6c757d;
+    font-size: 11px;
+}}
+.note {{
+    margin-top: 12px;
+    color: #868e96;
+    font-size: 12px;
 }}
 .empty {{
+    grid-column: 1 / -1;
     padding: 20px;
     border: 1px dashed #ced4da;
     background: #fff;
@@ -769,12 +844,22 @@ body {{
     color: #868e96;
 }}
 @media (max-width: 700px) {{
-    .date-row {{
-        flex-direction: column;
-        align-items: flex-start;
+    .calendar {{
+        gap: 6px;
     }}
-    .date-right {{
-        justify-content: flex-start;
+    .cal-cell {{
+        min-height: 78px;
+        padding: 8px;
+    }}
+    .day-number {{
+        font-size: 14px;
+    }}
+    .day-count,
+    .day-credits {{
+        font-size: 11px;
+    }}
+    .day-source {{
+        display: none;
     }}
 }}
 </style>
@@ -784,11 +869,21 @@ body {{
         <div class="head">
             <span class="title">AI Log Dates</span>
             <span class="version">v{e(app_version)}</span>
-            <span class="meta">直近30日から日付を選択</span>
+            <span class="meta">件数+AI credit（AIU）つきカレンダー（0件は選択不可）</span>
         </div>
-        <section class="list">
-            {list_html}
+        <div class="month-nav">
+            <a class="month-link" href="{prev_href}">前月</a>
+            <div class="month-center">
+                <span class="month-label">{month_label}</span>
+                {month_credits_html}
+            </div>
+            <a class="month-link" href="{next_href}">翌月</a>
+        </div>
+        <section class="calendar">
+            {weekday_html}
+            {cells_html}
         </section>
+        <p class="note">※ 0件の日付はグレーアウトされ、クリックできません。</p>
     </main>
 </body>
 </html>"""

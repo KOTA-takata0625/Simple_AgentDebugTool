@@ -31,6 +31,8 @@ from session_view_service import load_subagent_entries as svc_load_subagent_entr
 
 
 VERSION_PATTERN = re.compile(r"^\d+\.\d$")
+DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+MONTH_PATTERN = re.compile(r"^\d{4}-\d{2}$")
 
 
 def load_app_version() -> str:
@@ -54,48 +56,89 @@ def create_app(
     app = FastAPI(title=f"AI Log Viewer v{app_version}")
     finder_path = finder_script or (Path.home() / "find_debug_logs.sh")
 
-    def _recent_dates(days: int = 30) -> list[str]:
-        today = datetime.now().date()
-        return [
-            (today - timedelta(days=delta)).strftime("%Y-%m-%d")
-            for delta in range(days)
-        ]
+    index_entries_cache: list = []
+    index_date_cache = ""
+    index_info_cache = ""
+    if sessions_index_path is not None:
+        index_entries_cache, index_date_cache, index_info_cache = io_load_sessions_index(sessions_index_path)
 
-    def _build_date_rows(days: int = 30) -> list[dict]:
-        dates = _recent_dates(days)
-        index_entries: list = []
-        index_date = ""
-        if sessions_index_path is not None:
-            index_entries, index_date, _ = io_load_sessions_index(sessions_index_path)
+    def _resolve_month_start(month_text: Optional[str]) -> datetime:
+        if not month_text:
+            now = datetime.now()
+            return datetime(year=now.year, month=now.month, day=1)
 
-        rows = []
-        for date_str in dates:
-            source = "live"
-            if index_date and date_str == index_date:
-                count = len(index_entries)
-                source = "index"
-            else:
-                entries, _ = svc_collect_session_summaries(date_str, finder_path)
-                count = len(entries)
+        month_value = month_text.strip()
+        if not MONTH_PATTERN.fullmatch(month_value):
+            raise ValueError("month must be YYYY-MM")
+        return datetime.strptime(month_value, "%Y-%m")
 
-            rows.append(
+    def _count_for_date(target_date: str) -> tuple[int, str, float]:
+        if index_date_cache and target_date == index_date_cache:
+            credits_total = round(
+                sum(float(item.get("credits", 0.0) or 0.0) for item in index_entries_cache),
+                1,
+            )
+            return len(index_entries_cache), "index", credits_total
+
+        entries, _ = svc_collect_session_summaries(target_date, finder_path)
+        credits_total = round(
+            sum(float(item.get("credits", 0.0) or 0.0) for item in entries),
+            1,
+        )
+        return len(entries), "live", credits_total
+
+    def _build_month_calendar(month_text: Optional[str]) -> dict:
+        month_start = _resolve_month_start(month_text)
+        next_month = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+        prev_month = month_start - timedelta(days=1)
+        prev_month_start = prev_month.replace(day=1)
+        days_in_month = (next_month - month_start).days
+
+        cells: list[dict | None] = []
+        leading_empty = month_start.weekday()
+        for _ in range(leading_empty):
+            cells.append(None)
+
+        today_text = datetime.now().strftime("%Y-%m-%d")
+        for day in range(1, days_in_month + 1):
+            current = month_start.replace(day=day)
+            date_text = current.strftime("%Y-%m-%d")
+            count, source, credits_total = _count_for_date(date_text)
+            cells.append(
                 {
-                    "date": date_str,
+                    "date": date_text,
+                    "day": day,
                     "count": count,
+                    "credits_total": credits_total,
                     "source": source,
+                    "is_today": date_text == today_text,
                 }
             )
 
-        return rows
+        while len(cells) % 7 != 0:
+            cells.append(None)
+
+        month_credits_total = round(
+            sum(float(c.get("credits_total", 0.0) or 0.0) for c in cells if c is not None),
+            1,
+        )
+
+        return {
+            "month": month_start.strftime("%Y-%m"),
+            "month_label": month_start.strftime("%Y年%m月"),
+            "prev_month": prev_month_start.strftime("%Y-%m"),
+            "next_month": next_month.strftime("%Y-%m"),
+            "month_credits_total": month_credits_total,
+            "cells": cells,
+        }
 
     def _collect_entries_for_date(target_date: str) -> tuple[list, str]:
         if sessions_index_path is not None:
-            entries, index_date, index_info = io_load_sessions_index(sessions_index_path)
-            if not index_date or target_date == index_date:
-                return entries, f"{index_info} - source=index"
+            if not index_date_cache or target_date == index_date_cache:
+                return index_entries_cache, f"{index_info_cache} - source=index"
 
             live_entries, live_info = svc_collect_session_summaries(target_date, finder_path)
-            index_hint = f"index-date={index_date}" if index_date else "index-date=unknown"
+            index_hint = f"index-date={index_date_cache}" if index_date_cache else "index-date=unknown"
             return live_entries, f"{live_info} - source=live ({index_hint})"
 
         entries, info = svc_collect_session_summaries(target_date, finder_path)
@@ -118,12 +161,23 @@ def create_app(
         )
 
     @app.get("/", response_class=HTMLResponse)
-    def root(date: Optional[str] = Query(default=None, description="YYYY-MM-DD")):
+    def root(
+        date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+        month: Optional[str] = Query(default=None, description="YYYY-MM"),
+    ):
         if not date:
-            html = ren_render_date_landing_page(_build_date_rows(30), app_version=app_version)
+            try:
+                calendar_data = _build_month_calendar(month)
+            except ValueError as ex:
+                return HTMLResponse(content=f"invalid month: {e(ex)}", status_code=400)
+
+            html = ren_render_date_landing_page(calendar_data, app_version=app_version)
             return HTMLResponse(content=html)
 
         target_date = date.strip()
+        if not DATE_PATTERN.fullmatch(target_date):
+            return HTMLResponse(content=f"invalid date format: {e(target_date)}", status_code=400)
+
         entries, info = _collect_entries_for_date(target_date)
         html = ren_render_sessions_page(target_date, entries, info, None, app_version=app_version)
         return HTMLResponse(content=html)
