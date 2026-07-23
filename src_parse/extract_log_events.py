@@ -54,13 +54,68 @@ def _extract_type_and_name_only(value: Any) -> Any:
     return None
 
 
+def _parse_json_with_truncation_repair(raw: str) -> Optional[Any]:
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    repaired = _repair_truncated_json(raw)
+    if repaired is None:
+        return None
+
+    try:
+        return json.loads(repaired)
+    except json.JSONDecodeError:
+        return None
+
+
+def _repair_truncated_json(raw: str) -> Optional[str]:
+    stack: list[str] = []
+    in_string = False
+    escape = False
+
+    for char in raw:
+        if in_string:
+            if escape:
+                escape = False
+                continue
+            if char == "\\":
+                escape = True
+                continue
+            if char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            stack.append("}")
+        elif char == "[":
+            stack.append("]")
+        elif char in {"}", "]"}:
+            if not stack or stack[-1] != char:
+                return None
+            stack.pop()
+
+    repaired = raw
+    if in_string:
+        if escape:
+            repaired += "\\"
+        repaired += '"'
+
+    if stack:
+        repaired += "".join(reversed(stack))
+
+    return repaired
+
+
 def _extract_agent_response_payload(response: Any) -> Any:
     if not isinstance(response, str):
         return _extract_type_and_name_only(response)
 
-    try:
-        parsed = json.loads(response)
-    except json.JSONDecodeError:
+    parsed = _parse_json_with_truncation_repair(response)
+    if parsed is None:
         return response
 
     extracted = _extract_type_and_name_only(parsed)
@@ -145,10 +200,11 @@ def extract_title_from_file(title_path: Path) -> Optional[dict[str, Any]]:
                 attrs = event.get("attrs", {})
                 response = attrs.get("response")
                 if response is not None:
-                    try:
-                        parsed = json.loads(response) if isinstance(response, str) else response
-                    except json.JSONDecodeError:
-                        parsed = None
+                    parsed = (
+                        _parse_json_with_truncation_repair(response)
+                        if isinstance(response, str)
+                        else response
+                    )
                     if isinstance(parsed, list):
                         for msg in parsed:
                             for part in msg.get("parts", []):

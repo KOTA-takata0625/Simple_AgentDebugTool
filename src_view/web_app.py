@@ -6,6 +6,7 @@ Usage: python3 web_app.py [--sessions-index path/to/sessions_index.json] [--host
 """
 
 import argparse
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -27,6 +28,19 @@ from session_log_processor import group_blocks as proc_group_blocks
 from session_view_service import collect_session_summaries as svc_collect_session_summaries
 from session_view_service import load_subagent_entries as svc_load_subagent_entries
 
+
+VERSION_PATTERN = re.compile(r"^\d+\.\d$")
+
+
+def load_app_version() -> str:
+    version_path = Path(__file__).resolve().parent.parent / "VERSION"
+    try:
+        version = version_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return "0.0"
+
+    return version if VERSION_PATTERN.fullmatch(version) else "0.0"
+
 # ─────────────────────────────────────────────
 # App Factory
 # ─────────────────────────────────────────────
@@ -35,7 +49,8 @@ def create_app(
     sessions_index_path: Optional[Path] = None,
     finder_script: Optional[Path] = None,
 ) -> FastAPI:
-    app = FastAPI(title="AI Log Viewer")
+    app_version = load_app_version()
+    app = FastAPI(title=f"AI Log Viewer v{app_version}")
     finder_path = finder_script or (Path.home() / "find_debug_logs.sh")
 
     def _build_zip_response(files: list[str]):
@@ -60,13 +75,13 @@ def create_app(
             entries, index_date, index_info = io_load_sessions_index(sessions_index_path)
             target_date = date or index_date or datetime.now().strftime("%Y-%m-%d")
             info = f"{index_info} - source=index"
-            html = ren_render_sessions_page(target_date, entries, info, None)
+            html = ren_render_sessions_page(target_date, entries, info, None, app_version=app_version)
             return HTMLResponse(content=html)
 
         target_date = date or datetime.now().strftime("%Y-%m-%d")
         entries, info = svc_collect_session_summaries(target_date, finder_path)
         info = f"{info} - source=live"
-        html = ren_render_sessions_page(target_date, entries, info, None)
+        html = ren_render_sessions_page(target_date, entries, info, None, app_version=app_version)
         return HTMLResponse(content=html)
 
     @app.get("/view", response_class=HTMLResponse)
@@ -74,7 +89,7 @@ def create_app(
         if not file:
             return HTMLResponse(
                 content=(
-                    "<h1>AI Log Viewer</h1>"
+                    f"<h1>AI Log Viewer v{e(app_version)}</h1>"
                     "<p>表示対象の file クエリが未指定です。</p>"
                     '<p><a href="/">セッション一覧へ</a></p>'
                 ),
@@ -93,6 +108,7 @@ def create_app(
             session_title,
             subagent_entries,
             source_file=target,
+            app_version=app_version,
             calc_credits_fn=proc_calc_credits,
         )
         return HTMLResponse(content=html)

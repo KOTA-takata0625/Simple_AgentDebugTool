@@ -279,6 +279,7 @@ def render_page(
         session_title: dict | None = None,
         subagent_entries: Optional[list] = None,
     source_file: Optional[Path] = None,
+    app_version: str = "0.0",
         *,
         calc_credits_fn: Callable[[dict], float],
 ) -> str:
@@ -314,6 +315,8 @@ def render_page(
             zip_href = f"/download/zip?file={quote(str(source_file))}"
             action_html = f'<a class="app-action" href="{zip_href}">このセッションをZIP</a>'
 
+        version_html = f'<span class="app-version">v{e(app_version)}</span>'
+
         styles_css = load_template_text("styles.css")
         scripts_js = load_template_text("scripts.js")
 
@@ -331,6 +334,7 @@ def render_page(
 
 <header class="app-header">
     <span class="app-title">AI Log Viewer</span>
+    {version_html}
     {session_html}
     {action_html}
     <span class="app-summary">{block_count} blocks · {total_all:.1f} total credits</span>
@@ -347,7 +351,13 @@ def render_page(
 </html>"""
 
 
-def render_sessions_page(date_str: str, entries: list, info: str, default_file: Optional[Path]) -> str:
+def render_sessions_page(
+    date_str: str,
+    entries: list,
+    info: str,
+    default_file: Optional[Path],
+    app_version: str = "0.0",
+) -> str:
         rows = []
         for item in entries:
                 file_path = str(item["file"])
@@ -465,6 +475,15 @@ body {{
     font-size: 22px;
     font-weight: 800;
     color: #1c7ed6;
+}}
+.version {{
+    font-size: 12px;
+    font-weight: 700;
+    color: #495057;
+    border: 1px solid #ced4da;
+    background: #ffffff;
+    border-radius: 999px;
+    padding: 3px 8px;
 }}
 .meta {{
     color: #6c757d;
@@ -606,6 +625,7 @@ body {{
     <main class="wrap">
         <div class="head">
             <span class="title">AI Log Sessions</span>
+            <span class="version">v{e(app_version)}</span>
             <span class="meta">date: {e(date_str)} · {e(info)}</span>
             {action_html}
         </div>

@@ -93,15 +93,24 @@ def parse_session_datetime(dt_text: str) -> float:
     return 0.0
 
 
-def session_matches_date(dt_text: str, date_str: str) -> bool:
+def session_filter_reason(dt_text: str, date_str: str) -> str | None:
     if not dt_text:
-        return False
+        return "session_title.datetime is empty"
     for fmt in ("%Y-%m-%d %H:%M:%S JST", "%Y-%m-%d %H:%M:%S"):
         try:
-            return datetime.strptime(dt_text, fmt).strftime("%Y-%m-%d") == date_str
+            parsed_date = datetime.strptime(dt_text, fmt).strftime("%Y-%m-%d")
+            if parsed_date != date_str:
+                return f"date mismatch ({parsed_date} != {date_str})"
+            return None
         except ValueError:
             continue
-    return dt_text.startswith(f"{date_str} ")
+    if dt_text.startswith(f"{date_str} "):
+        return None
+    return f"unparseable session_title.datetime: {dt_text}"
+
+
+def session_matches_date(dt_text: str, date_str: str) -> bool:
+    return session_filter_reason(dt_text, date_str) is None
 
 
 def collect_debug_dirs(date_str: str, finder_script: Path) -> list[Path]:
@@ -174,6 +183,7 @@ def main() -> None:
     sessions = []
     skipped = 0
     filtered = 0
+    filtered_entries = []
     for debug_dir in debug_dirs:
         extracted = debug_dir / "extracted_main.jsonl"
         if args.ensure_extracted:
@@ -193,8 +203,18 @@ def main() -> None:
             title = (session.get("content") or "").strip() or debug_dir.name
             dt_text = (session.get("datetime") or "").strip()
 
-            if not session_matches_date(dt_text, args.date):
+            filter_reason = session_filter_reason(dt_text, args.date)
+            if filter_reason is not None:
                 filtered += 1
+                filtered_entries.append(
+                    {
+                        "title": title,
+                        "datetime": dt_text,
+                        "file": str(extracted),
+                        "debug_dir": str(debug_dir),
+                        "reason": filter_reason,
+                    }
+                )
                 continue
 
             sessions.append(
@@ -224,6 +244,7 @@ def main() -> None:
             + (f" (filtered {filtered})" if filtered else "")
         ),
         "sessions": sessions,
+        "filtered": filtered_entries,
     }
 
     out_path = Path(args.output).expanduser()
@@ -232,6 +253,9 @@ def main() -> None:
 
     print(f"index written: {out_path}")
     print(out["info"])
+    for item in filtered_entries:
+        dt_text = item["datetime"] or "-"
+        print(f"filtered: {item['file']} | title={item['title']} | datetime={dt_text} | {item['reason']}")
 
 
 if __name__ == "__main__":
