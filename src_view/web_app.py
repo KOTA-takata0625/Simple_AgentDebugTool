@@ -21,6 +21,7 @@ from html_page_renderer import render_date_landing_page as ren_render_date_landi
 from html_page_renderer import render_page as ren_render_page
 from html_page_renderer import render_sessions_page as ren_render_sessions_page
 from log_data_io import build_sessions_zip as io_build_sessions_zip
+from log_data_io import ensure_extracted_main as io_ensure_extracted_main
 from log_data_io import load_events as io_load_events
 from log_data_io import load_sessions_index as io_load_sessions_index
 from session_log_processor import calc_credits as proc_calc_credits
@@ -199,6 +200,10 @@ def create_app(
                 status_code=400,
             )
         target = Path(file).expanduser()
+        if target.name == "extracted_main.jsonl":
+            refreshed = io_ensure_extracted_main(target.parent)
+            if refreshed is not None:
+                target = refreshed
         if not target.exists():
             return HTMLResponse(content=f"file not found: {e(target)}", status_code=404)
 

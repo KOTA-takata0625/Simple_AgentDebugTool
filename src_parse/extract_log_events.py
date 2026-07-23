@@ -16,6 +16,64 @@ TARGET_EVENT_TYPES = {
 }
 
 
+def _first_non_none(*values: Any) -> Any:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
+def _coerce_number(value: Any) -> Any:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            if any(ch in text for ch in (".", "e", "E")):
+                return float(text)
+            return int(text)
+        except ValueError:
+            return None
+    return None
+
+
+def _get_in(mapping: Any, *path: str) -> Any:
+    current = mapping
+    for key in path:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    return current
+
+
+def _extract_model_name(event: dict[str, Any], attrs: dict[str, Any]) -> Any:
+    model = _first_non_none(
+        attrs.get("model"),
+        event.get("model"),
+        _get_in(attrs, "request", "model"),
+        _get_in(attrs, "response", "model"),
+    )
+    if model is not None:
+        return model
+
+    event_name = event.get("name")
+    if isinstance(event_name, str) and event_name.startswith("chat:"):
+        return event_name.split(":", 1)[1]
+    return event_name
+
+
+def _extract_metric(attrs: dict[str, Any], *candidate_paths: tuple[str, ...]) -> Any:
+    for path in candidate_paths:
+        value = _coerce_number(_get_in(attrs, *path))
+        if value is not None:
+            return value
+    return None
+
+
 def _get_attrs(event: dict[str, Any]) -> dict[str, Any]:
     attrs = event.get("attrs")
     return attrs if isinstance(attrs, dict) else {}
@@ -136,17 +194,44 @@ def extract_agent_response(event: dict[str, Any]) -> dict[str, Any]:
 
 def extract_llm_request(event: dict[str, Any]) -> dict[str, Any]:
     attrs = _get_attrs(event)
-    model = attrs.get("model")
-    if model is None:
-        model = event.get("model")
+    model = _extract_model_name(event, attrs)
+    input_tokens = _extract_metric(
+        attrs,
+        ("inputTokens",),
+        ("usage", "inputTokens"),
+        ("tokenUsage", "inputTokens"),
+        ("request", "inputTokens"),
+        ("response", "usage", "inputTokens"),
+    )
+    output_tokens = _extract_metric(
+        attrs,
+        ("outputTokens",),
+        ("usage", "outputTokens"),
+        ("tokenUsage", "outputTokens"),
+        ("response", "usage", "outputTokens"),
+    )
+    cached_tokens = _extract_metric(
+        attrs,
+        ("cachedTokens",),
+        ("usage", "cachedTokens"),
+        ("tokenUsage", "cachedTokens"),
+        ("response", "usage", "cachedTokens"),
+    )
+    nano_aiu = _extract_metric(
+        attrs,
+        ("copilotUsageNanoAiu",),
+        ("usage", "copilotUsageNanoAiu"),
+        ("billing", "copilotUsageNanoAiu"),
+        ("response", "usage", "copilotUsageNanoAiu"),
+    )
 
     return {
         "event_type": "llm_request",
         "model": model,
-        "copilotUsageNanoAiu": attrs.get("copilotUsageNanoAiu"),
-        "inputTokens": attrs.get("inputTokens"),
-        "outputTokens": attrs.get("outputTokens"),
-        "cachedTokens": attrs.get("cachedTokens"),
+        "copilotUsageNanoAiu": nano_aiu,
+        "inputTokens": input_tokens,
+        "outputTokens": output_tokens,
+        "cachedTokens": cached_tokens,
     }
 
 

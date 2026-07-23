@@ -6,6 +6,17 @@ from typing import Callable, Optional
 from urllib.parse import quote
 
 
+CACHE_RATE_CAUTION_THRESHOLD = 40.0
+CACHE_RATE_WARNING_THRESHOLD = 20.0
+CACHE_RATE_CHECK_THRESHOLD = 60.0
+OUTPUT_TOKEN_CHECK_THRESHOLD = 1000
+OUTPUT_TOKEN_CAUTION_THRESHOLD = 4000
+OUTPUT_TOKEN_WARNING_THRESHOLD = 8000
+INPUT_GROWTH_CHECK_THRESHOLD = 3000
+INPUT_GROWTH_CAUTION_THRESHOLD = 8000
+INPUT_GROWTH_WARNING_THRESHOLD = 20000
+
+
 def e(text: str) -> str:
     """HTML escape."""
     return html_lib.escape(str(text), quote=True)
@@ -29,6 +40,54 @@ def _prefixed_uid(render_ctx: dict, base: str) -> str:
 def load_template_text(name: str) -> str:
     template_path = Path(__file__).resolve().parent / "templates" / name
     return template_path.read_text(encoding="utf-8")
+
+
+def _severity_class_for_cache_rate(rate: float) -> str:
+    if rate < CACHE_RATE_WARNING_THRESHOLD:
+        return "metric-warning"
+    if rate < CACHE_RATE_CAUTION_THRESHOLD:
+        return "metric-caution"
+    if rate < CACHE_RATE_CHECK_THRESHOLD:
+        return "metric-check"
+    return ""
+
+
+def _severity_class_for_output_tokens(output_tokens: int) -> str:
+    if output_tokens >= OUTPUT_TOKEN_WARNING_THRESHOLD:
+        return "metric-warning"
+    if output_tokens >= OUTPUT_TOKEN_CAUTION_THRESHOLD:
+        return "metric-caution"
+    if output_tokens >= OUTPUT_TOKEN_CHECK_THRESHOLD:
+        return "metric-check"
+    return ""
+
+
+def _severity_class_for_input_growth(input_growth: int) -> str:
+    if input_growth >= INPUT_GROWTH_WARNING_THRESHOLD:
+        return "metric-warning"
+    if input_growth >= INPUT_GROWTH_CAUTION_THRESHOLD:
+        return "metric-caution"
+    if input_growth >= INPUT_GROWTH_CHECK_THRESHOLD:
+        return "metric-check"
+    return ""
+
+
+def _format_optional_number(value: object) -> str:
+    if value is None:
+        return "—"
+    try:
+        return f"{int(value):,}"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _format_optional_credits(nano_aiu: object) -> str:
+    if nano_aiu is None:
+        return "—"
+    try:
+        return f"{(int(nano_aiu) / 1_000_000_000):.2f}"
+    except (TypeError, ValueError):
+        return "—"
 
 
 def render_tool_call_part(
@@ -172,32 +231,64 @@ def render_agent_response(ar: dict, pair_idx: int, render_ctx: dict, *, calc_cre
 
 
 def render_llm_request(lr: dict, body_uid: str, subagent_credits: float = 0.0) -> str:
-        model = e(lr.get("model", "—"))
-        nano = lr.get("copilotUsageNanoAiu") or 0
-        credits = round(nano / 1_000_000_000, 2)
-        input_tok = lr.get("inputTokens", 0) or 0
-        output_tok = lr.get("outputTokens", 0) or 0
-        cached_tok = lr.get("cachedTokens")
+    raw_model = lr.get("model")
+    model = e(raw_model or "—")
+    nano = lr.get("copilotUsageNanoAiu")
+    credits_display = _format_optional_credits(nano)
+    input_tok = lr.get("inputTokens")
+    output_tok = lr.get("outputTokens")
+    cached_tok = lr.get("cachedTokens")
+    input_growth = lr.get("input_growth")
+    input_severity_class = ""
+    output_severity_class = ""
+    input_tok_value = None
+    if input_tok is not None:
+        try:
+            input_tok_value = int(input_tok)
+        except (TypeError, ValueError):
+            input_tok_value = None
 
-        cache_rate_html = ""
-        if cached_tok is not None and input_tok > 0:
-                rate = round(cached_tok / input_tok * 100, 1)
-                cache_rate_html = f'<span class="token-badge cache">Cache {rate}%</span>'
+    if output_tok is not None:
+        try:
+            output_severity_class = _severity_class_for_output_tokens(int(output_tok))
+        except (TypeError, ValueError):
+            output_severity_class = ""
 
-        cached_display = f"{cached_tok:,}" if cached_tok is not None else "—"
-        subagent_html = ""
-        if subagent_credits > 0:
-                subagent_html = f'<span class="subagent-inline">subAgent {subagent_credits:.2f} credits</span>'
+    cache_rate_html = ""
+    if cached_tok is not None and input_tok_value is not None and input_tok_value > 0:
+        rate = round(cached_tok / input_tok_value * 100, 1)
+        cache_severity_class = _severity_class_for_cache_rate(rate)
+        cache_rate_html = f'<span class="token-badge cache {cache_severity_class}">Cache {rate}%</span>'
 
-        return f"""
+    input_growth_html = ""
+    if input_growth is not None:
+        try:
+            growth_val = int(input_growth)
+            growth_severity_class = _severity_class_for_input_growth(growth_val)
+            input_severity_class = growth_severity_class
+            if growth_severity_class:
+                input_growth_html = f'<span class="token-badge input-growth {growth_severity_class}">in +{growth_val:,}</span>'
+        except (TypeError, ValueError):
+            pass
+
+    input_display = _format_optional_number(input_tok)
+    cached_display = _format_optional_number(cached_tok)
+    output_display = _format_optional_number(output_tok)
+    cached_severity_class = "metric-warning" if cached_display == "—" else ""
+    subagent_html = ""
+    if subagent_credits > 0:
+        subagent_html = f'<span class="subagent-inline">subAgent {subagent_credits:.2f} credits</span>'
+
+    return f"""
 <div class="llm-meta" onclick="toggleDetail('{body_uid}')" title="クリックで展開 / 折りたたみ">
     <div class="llm-meta-row">
         <span class="model-name">{model}</span>
-        <span class="credits-inline">{credits:.2f} credits</span>
-        <span class="token-badge input">in {input_tok:,}</span>
-        <span class="token-badge cached">cached {cached_display}</span>
-        <span class="token-badge output">out {output_tok:,}</span>
+        <span class="credits-inline">{credits_display} credits</span>
+        <span class="token-badge input {input_severity_class}">in {input_display}</span>
+        <span class="token-badge cached {cached_severity_class}">cached {cached_display}</span>
+        <span class="token-badge output {output_severity_class}">out {output_display}</span>
         {cache_rate_html}
+        {input_growth_html}
         {subagent_html}
         <span class="toggle-arrow" id="{body_uid}-arrow">▶</span>
     </div>
@@ -253,6 +344,21 @@ def render_block(
                 sub_credits = float(render_ctx.get("block_subagent_credits", {}).get(block_idx, 0.0) or 0.0)
         total_credits = round(main_credits + sub_credits, 1)
 
+        block_input_growth_html = ""
+        block_input_growth = block.get("input_growth")
+        if block_input_growth is not None:
+                try:
+                        growth_val = int(block_input_growth)
+                        growth_class = _severity_class_for_input_growth(growth_val)
+                        if growth_class:
+                                block_input_growth_html = (
+                                        f'<span class="token-badge input-growth {growth_class} block-input-growth">'
+                                        f'in +{growth_val:,}'
+                                        "</span>"
+                                )
+                except (TypeError, ValueError):
+                        pass
+
         pairs_combined = "\n".join(pairs_html)
 
         msg_text = e(content.strip())
@@ -268,6 +374,7 @@ def render_block(
 <section class="block" id="block-{block_idx}">
     <div class="block-header">
         <span class="total-credits">Total Credits {total_credits:.1f}</span>
+        {block_input_growth_html}
     </div>
     {user_card_html}
     {pairs_combined}

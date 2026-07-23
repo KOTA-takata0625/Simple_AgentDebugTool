@@ -17,6 +17,18 @@
   --reasoning-border: #cc5de8;
   --response-bg:      #f0f4ff;
   --response-border:  #74c0fc;
+  --metric-normal-bg: #ebfbee;
+  --metric-normal-border: #b2f2bb;
+  --metric-normal-text: #2b8a3e;
+  --metric-caution-bg: #fff3bf;
+  --metric-caution-border: #ffd43b;
+  --metric-caution-text: #e67700;
+  --metric-check-bg: #e7f5ff;
+  --metric-check-border: #a5d8ff;
+  --metric-check-text: #1864ab;
+  --metric-warning-bg: #ffe3e3;
+  --metric-warning-border: #ffa8a8;
+  --metric-warning-text: #c92a2a;
 }
 body {
   background: var(--bg);
@@ -92,6 +104,14 @@ body {
   padding: 8px 12px;
   background: #2d2d2d;
   border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.block-input-growth {
+  font-size: 13px;
 }
 
 /* ── Total Credits badge ── */
@@ -200,6 +220,102 @@ body {
   border: 1px solid #e6cc00;
   border-radius: 12px;
   padding: 2px 8px;
+}
+
+.token-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid #dee2e6;
+  background: #f1f3f5;
+  color: #495057;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.token-badge.output.metric-check,
+.token-badge.input.metric-check,
+.token-badge.cache.metric-check,
+.token-badge.output.metric-caution,
+.token-badge.input.metric-caution,
+.token-badge.cache.metric-caution,
+.token-badge.output.metric-warning,
+.token-badge.input.metric-warning,
+.token-badge.cache.metric-warning,
+.token-badge.cached.metric-warning {
+  font-weight: 800;
+  border-width: 2px;
+}
+
+.token-badge.output.metric-caution,
+.token-badge.input.metric-caution,
+.token-badge.cache.metric-caution {
+  background: var(--metric-caution-bg);
+  border-color: var(--metric-caution-border);
+  color: var(--metric-caution-text);
+  box-shadow: 0 0 0 2px rgba(255, 212, 59, 0.28);
+}
+.token-badge.output.metric-check,
+.token-badge.input.metric-check,
+.token-badge.cache.metric-check {
+  background: var(--metric-check-bg);
+  border-color: var(--metric-check-border);
+  color: var(--metric-check-text);
+  box-shadow: 0 0 0 2px rgba(165, 216, 255, 0.3);
+}
+.token-badge.output.metric-warning,
+.token-badge.input.metric-warning,
+.token-badge.cached.metric-warning,
+.token-badge.cache.metric-warning {
+  background: var(--metric-warning-bg);
+  border-color: var(--metric-warning-border);
+  color: var(--metric-warning-text);
+  box-shadow: 0 0 0 2px rgba(255, 168, 168, 0.32);
+  animation: metric-warning-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes metric-warning-pulse {
+  0% {
+    box-shadow: 0 0 0 2px rgba(255, 168, 168, 0.32);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(255, 168, 168, 0.46);
+  }
+  100% {
+    box-shadow: 0 0 0 2px rgba(255, 168, 168, 0.32);
+  }
+}
+
+/* ── Input Growth Badge Styles ── */
+.token-badge.input-growth.metric-check,
+.token-badge.input-growth.metric-caution,
+.token-badge.input-growth.metric-warning {
+  font-weight: 800;
+  border-width: 2px;
+}
+
+.token-badge.input-growth.metric-check {
+  background: var(--metric-check-bg);
+  border-color: var(--metric-check-border);
+  color: var(--metric-check-text);
+  box-shadow: 0 0 0 2px rgba(165, 216, 255, 0.3);
+}
+
+.token-badge.input-growth.metric-caution {
+  background: var(--metric-caution-bg);
+  border-color: var(--metric-caution-border);
+  color: var(--metric-caution-text);
+  box-shadow: 0 0 0 2px rgba(255, 212, 59, 0.28);
+}
+
+.token-badge.input-growth.metric-warning {
+  background: var(--metric-warning-bg);
+  border-color: var(--metric-warning-border);
+  color: var(--metric-warning-text);
+  box-shadow: 0 0 0 2px rgba(255, 168, 168, 0.32);
+  animation: metric-warning-pulse 1.2s ease-in-out infinite;
 }
 
 /* ── Section (Reasoning / Response) ── */

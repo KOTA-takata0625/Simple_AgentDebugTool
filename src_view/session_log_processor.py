@@ -13,8 +13,46 @@ def group_blocks(events: list) -> list:
             "pairs": [],
         }
 
+    def block_input_total(block: dict) -> int:
+        total = 0
+        for pair in block.get("pairs", []):
+            lr = pair.get("llm_request")
+            if not lr:
+                continue
+            input_tokens = lr.get("inputTokens")
+            if input_tokens is None:
+                continue
+            try:
+                total += int(input_tokens)
+            except (TypeError, ValueError):
+                pass
+        return total
+
+    def finalize_block(block: dict, previous_total: int | None) -> int:
+        current_total = block_input_total(block)
+        block["input_tokens_total"] = current_total
+
+        # ブロック内の最初と最後の inputTokens 差分を計算
+        pairs_with_input = [
+            p for p in block.get("pairs", [])
+            if p.get("llm_request") and p["llm_request"].get("inputTokens") is not None
+        ]
+        if len(pairs_with_input) >= 2:
+            try:
+                first_val = int(pairs_with_input[0]["llm_request"]["inputTokens"])
+                last_val = int(pairs_with_input[-1]["llm_request"]["inputTokens"])
+                growth = last_val - first_val
+                if growth > 0:
+                    block["input_growth"] = growth
+            except (TypeError, ValueError):
+                pass
+
+        return current_total
+
     blocks = []
     current = None
+    previous_input_tokens = None
+    previous_block_input_total = None
 
     for ev in events:
         t = ev.get("event_type")
@@ -24,13 +62,34 @@ def group_blocks(events: list) -> list:
 
         if t == "user_message":
             if current is not None:
+                previous_block_input_total = finalize_block(current, previous_block_input_total)
                 blocks.append(current)
             current = new_block(user_text=ev.get("content", ""))
+            previous_input_tokens = None
             continue
 
         if t == "llm_request":
             if current is None:
                 current = new_block()
+
+            # Calculate request-level input token growth inside a single user message block.
+            current_input_tokens = ev.get("inputTokens")
+            if current_input_tokens is not None and previous_input_tokens is not None:
+                try:
+                    current_val = int(current_input_tokens)
+                    previous_val = int(previous_input_tokens)
+                    growth = current_val - previous_val
+                    if growth > 0:
+                        ev["input_growth"] = growth
+                except (TypeError, ValueError):
+                    pass
+
+            # Update previous input tokens for next comparison.
+            if current_input_tokens is not None:
+                try:
+                    previous_input_tokens = int(current_input_tokens)
+                except (TypeError, ValueError):
+                    pass
 
             current["pairs"].append({"llm_request": ev, "agent_response": None})
             continue
@@ -45,6 +104,7 @@ def group_blocks(events: list) -> list:
                 current["pairs"].append({"llm_request": None, "agent_response": ev})
 
     if current is not None:
+        previous_block_input_total = finalize_block(current, previous_block_input_total)
         blocks.append(current)
 
     return blocks
@@ -69,6 +129,22 @@ def calc_credits(block: dict) -> float:
             nano = lr.get("copilotUsageNanoAiu") or 0
             total += nano / 1_000_000_000
     return round(total, 1)
+
+
+def calc_total_input_tokens(blocks: list) -> int:
+    """Calculate total input tokens across all blocks."""
+    total = 0
+    for block in blocks:
+        for pair in block.get("pairs", []):
+            lr = pair.get("llm_request")
+            if lr:
+                input_tok = lr.get("inputTokens")
+                if input_tok is not None:
+                    try:
+                        total += int(input_tok)
+                    except (TypeError, ValueError):
+                        pass
+    return total
 
 
 def parse_session_datetime(dt_text: str) -> float:

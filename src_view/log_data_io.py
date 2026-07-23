@@ -8,6 +8,38 @@ from typing import Callable, Optional
 from zipfile import ZIP_DEFLATED, ZipFile
 
 
+def _extracted_llm_request_has_missing_model(path: Path) -> bool:
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(event, dict) or event.get("event_type") != "llm_request":
+                    continue
+                model = event.get("model")
+                if model is None:
+                    return True
+                if isinstance(model, str) and model.strip().lower() in {"", "none"}:
+                    return True
+    except OSError:
+        return True
+    return False
+
+
+def _should_rebuild_extracted(debug_dir: Path, extracted: Path) -> bool:
+    main_jsonl = debug_dir / "main.jsonl"
+    if not extracted.exists():
+        return True
+    if main_jsonl.exists() and main_jsonl.stat().st_mtime > extracted.stat().st_mtime:
+        return True
+    return _extracted_llm_request_has_missing_model(extracted)
+
+
 def load_events(path: Path) -> list:
     events = []
     with open(path, encoding="utf-8") as f:
@@ -59,13 +91,25 @@ def load_subagent_entries(
 
 def ensure_extracted_main(debug_dir: Path) -> Optional[Path]:
     extracted = debug_dir / "extracted_main.jsonl"
-    if extracted.exists():
+    if extracted.exists() and not _should_rebuild_extracted(debug_dir, extracted):
         return extracted
 
     repo_root = Path(__file__).resolve().parents[1]
     parser_script = repo_root / "src_parse" / "extract_log_events.py"
     if not parser_script.exists():
         return None
+
+    if extracted.exists():
+        try:
+            extracted.unlink()
+        except OSError:
+            pass
+    for sub in debug_dir.glob("extracted_runSubagent-*.jsonl"):
+        if sub.is_file():
+            try:
+                sub.unlink()
+            except OSError:
+                pass
 
     try:
         subprocess.run(
