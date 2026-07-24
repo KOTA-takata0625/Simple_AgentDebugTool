@@ -2,7 +2,7 @@
 """
 AI実行ログビューア
 FastAPI エントリポイント（配線専任）
-Usage: python3 web_app.py [--sessions-index path/to/sessions_index.json] [--host 0.0.0.0] [--port 5001]
+Usage: python3 web_app.py [--host 0.0.0.0] [--port 5001]
 """
 
 import argparse
@@ -23,7 +23,6 @@ from html_page_renderer import render_sessions_page as ren_render_sessions_page
 from log_data_io import build_sessions_zip as io_build_sessions_zip
 from log_data_io import ensure_extracted_main as io_ensure_extracted_main
 from log_data_io import load_events as io_load_events
-from log_data_io import load_sessions_index as io_load_sessions_index
 from session_log_processor import calc_credits as proc_calc_credits
 from session_log_processor import extract_session_title as proc_extract_session_title
 from session_log_processor import group_blocks as proc_group_blocks
@@ -55,18 +54,11 @@ def load_app_version() -> str:
 # ─────────────────────────────────────────────
 
 def create_app(
-    sessions_index_path: Optional[Path] = None,
     finder_script: Optional[Path] = None,
 ) -> FastAPI:
     app_version = load_app_version()
     app = FastAPI(title=f"AI Log Viewer v{app_version}")
     finder_path = finder_script or (Path.home() / "find_debug_logs.sh")
-
-    index_entries_cache: list = []
-    index_date_cache = ""
-    index_info_cache = ""
-    if sessions_index_path is not None:
-        index_entries_cache, index_date_cache, index_info_cache = io_load_sessions_index(sessions_index_path)
 
     def _resolve_month_start(month_text: Optional[str]) -> datetime:
         if not month_text:
@@ -79,13 +71,6 @@ def create_app(
         return datetime.strptime(month_value, "%Y-%m")
 
     def _count_for_date(target_date: str) -> tuple[int, str, float]:
-        if index_date_cache and target_date == index_date_cache:
-            credits_total = round(
-                sum(float(item.get("credits", 0.0) or 0.0) for item in index_entries_cache),
-                1,
-            )
-            return len(index_entries_cache), "index", credits_total
-
         entries, _ = svc_collect_session_summaries(target_date, finder_path)
         credits_total = round(
             sum(float(item.get("credits", 0.0) or 0.0) for item in entries),
@@ -139,14 +124,6 @@ def create_app(
         }
 
     def _collect_entries_for_date(target_date: str) -> tuple[list, str]:
-        if sessions_index_path is not None:
-            if not index_date_cache or target_date == index_date_cache:
-                return index_entries_cache, f"{index_info_cache} - source=index"
-
-            live_entries, live_info = svc_collect_session_summaries(target_date, finder_path)
-            index_hint = f"index-date={index_date_cache}" if index_date_cache else "index-date=unknown"
-            return live_entries, f"{live_info} - source=live ({index_hint})"
-
         entries, info = svc_collect_session_summaries(target_date, finder_path)
         return entries, f"{info} - source=live"
 
@@ -246,21 +223,15 @@ def main():
     parser.add_argument("--host", default="0.0.0.0", help="バインドホスト (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=5001, help="ポート番号 (default: 5001)")
     parser.add_argument(
-        "--sessions-index",
-        default=None,
-        help="セッション一覧JSON(index)のパス。指定時は / が index ベースで表示される",
-    )
-    parser.add_argument(
         "--finder-script",
         default=str(Path.home() / "find_debug_logs.sh"),
         help="ライブ一覧モードで使用する日付検索スクリプトのパス",
     )
     args = parser.parse_args()
 
-    sessions_index_path = Path(args.sessions_index) if args.sessions_index else None
     finder_script = Path(args.finder_script).expanduser()
 
-    app = create_app(sessions_index_path=sessions_index_path, finder_script=finder_script)
+    app = create_app(finder_script=finder_script)
     print(f"起動: http://{args.host}:{args.port}/")
     uvicorn.run(app, host=args.host, port=args.port)
 

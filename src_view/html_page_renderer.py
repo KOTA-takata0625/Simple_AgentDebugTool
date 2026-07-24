@@ -557,6 +557,8 @@ def render_page(
             zip_href = f"/download/zip?file={quote(str(source_file))}"
             action_html = f'<a class="app-action" href="{zip_href}">このセッションをZIP</a>'
 
+        title_button_html = '<a class="app-title app-title-link" href="/">AI Log Viewer</a>'
+        reload_button_html = '<button class="app-action app-reload-btn" type="button" onclick="window.location.reload()">更新</button>'
         version_html = f'<span class="app-version">v{e(app_version)}</span>'
 
         styles_css = load_template_text("styles.css")
@@ -575,7 +577,8 @@ def render_page(
 <body>
 
 <header class="app-header">
-    <span class="app-title">AI Log Viewer</span>
+    {title_button_html}
+    {reload_button_html}
     {version_html}
     {session_html}
     {action_html}
@@ -621,7 +624,8 @@ def render_sessions_page(
                 rows.append(row)
 
         rows_html = "\n".join(rows) if rows else '<div class="empty">表示対象がありません</div>'
-        action_items = ['<a href="/">日付選択へ</a>']
+        action_items = ['<button class="action-btn reload-btn" type="button" onclick="window.location.reload()">更新</button>']
+        action_items.append('<a href="/">日付選択へ</a>')
         if default_file is not None:
             default_href = f"/view?file={quote(str(default_file))}"
             action_items.append(f'<a href="{default_href}">既定ログを開く</a>')
@@ -718,6 +722,11 @@ body {{
     font-size: 22px;
     font-weight: 800;
     color: #1c7ed6;
+    text-decoration: none;
+    border: 1px solid #a5d8ff;
+    background: #e7f5ff;
+    border-radius: 999px;
+    padding: 4px 10px;
 }}
 .version {{
     font-size: 12px;
@@ -740,6 +749,22 @@ body {{
     background: #e3fafc;
     border-radius: 999px;
     padding: 4px 10px;
+}}
+.actions {{
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}}
+.action-btn.reload-btn {{
+    font-size: 13px;
+    font-weight: 700;
+    color: #0b7285;
+    border: 1px solid #99e9f2;
+    background: #e3fafc;
+    border-radius: 999px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-family: inherit;
 }}
 .bulk-actions {{
     display: grid;
@@ -867,7 +892,7 @@ body {{
 <body>
     <main class="wrap">
         <div class="head">
-            <span class="title">AI Log Sessions</span>
+            <a class="title" href="/">AI Log Viewer</a>
             <span class="version">v{e(app_version)}</span>
             <span class="meta">date: {e(date_str)} · {e(info)}</span>
             {action_html}
@@ -929,6 +954,7 @@ def render_date_landing_page(
     next_href = f"/?month={quote(next_month)}" if next_month else "/"
     month_credits_total = float(calendar_data.get("month_credits_total", 0.0) or 0.0)
     month_credits_html = f'<span class="month-credits-total">{month_credits_total:.1f} AIU / 月</span>'
+    reload_button_html = '<button class="action-btn reload-btn" type="button" onclick="window.location.reload()">更新</button>'
 
     return f"""<!DOCTYPE html>
 <html lang="ja">
@@ -960,6 +986,11 @@ body {{
     font-size: 22px;
     font-weight: 800;
     color: #1c7ed6;
+    text-decoration: none;
+    border: 1px solid #a5d8ff;
+    background: #e7f5ff;
+    border-radius: 999px;
+    padding: 4px 10px;
 }}
 .version {{
     font-size: 12px;
@@ -973,6 +1004,17 @@ body {{
 .meta {{
     color: #6c757d;
     font-size: 13px;
+}}
+.action-btn.reload-btn {{
+    font-size: 13px;
+    font-weight: 700;
+    color: #0b7285;
+    border: 1px solid #99e9f2;
+    background: #e3fafc;
+    border-radius: 999px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-family: inherit;
 }}
 .month-nav {{
     display: flex;
@@ -1109,7 +1151,8 @@ body {{
 <body>
     <main class="wrap">
         <div class="head">
-            <span class="title">AI Log Dates</span>
+            <a class="title" href="/">AI Log Viewer</a>
+            {reload_button_html}
             <span class="version">v{e(app_version)}</span>
             <span class="meta">件数+AI credit（AIU）つきカレンダー（0件は選択不可）</span>
         </div>

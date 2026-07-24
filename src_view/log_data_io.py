@@ -149,60 +149,6 @@ def ensure_extracted_main(debug_dir: Path) -> Optional[Path]:
     return extracted if extracted.exists() else None
 
 
-def _parse_session_datetime(dt_text: str) -> float:
-    if not dt_text:
-        return 0.0
-    for fmt in ("%Y-%m-%d %H:%M:%S JST", "%Y-%m-%d %H:%M:%S"):
-        try:
-            return datetime.strptime(dt_text, fmt).timestamp()
-        except ValueError:
-            continue
-    return 0.0
-
-
-def load_sessions_index(index_path: Path) -> tuple[list, str, str]:
-    if not index_path.exists():
-        return [], "", f"index not found: {index_path}"
-
-    try:
-        data = json.loads(index_path.read_text(encoding="utf-8"))
-    except Exception as ex:
-        return [], "", f"index load failed: {ex}"
-
-    raw_entries = data.get("sessions", []) if isinstance(data, dict) else []
-    entries = []
-    for item in raw_entries:
-        if not isinstance(item, dict):
-            continue
-
-        try:
-            blocks = int(item.get("blocks", 0) or 0)
-            credits = float(item.get("credits", 0.0) or 0.0)
-        except Exception:
-            continue
-
-        file_path = str(item.get("file", "")).strip()
-        if not file_path:
-            continue
-
-        dt_text = str(item.get("datetime", "")).strip()
-        entries.append(
-            {
-                "title": str(item.get("title", "")).strip() or Path(file_path).parent.name,
-                "datetime": dt_text,
-                "blocks": blocks,
-                "credits": credits,
-                "file": file_path,
-                "sort_ts": _parse_session_datetime(dt_text),
-            }
-        )
-
-    entries.sort(key=lambda x: x.get("sort_ts", 0.0), reverse=True)
-    date_label = str(data.get("date", "")) if isinstance(data, dict) else ""
-    info = str(data.get("info", f"{len(entries)} sessions")) if isinstance(data, dict) else f"{len(entries)} sessions"
-    return entries, date_label, info
-
-
 def _sanitize_zip_component(text: str, fallback: str) -> str:
     raw = str(text or "").strip()
     if not raw:

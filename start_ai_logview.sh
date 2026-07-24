@@ -7,49 +7,21 @@ set -euo pipefail
 export WORKSPACE_STORAGE_DIR="$HOME/.vscode-server/data/User/workspaceStorage"
 
 # Usage:
-#   ./start_ai_logview.sh [--host 127.0.0.1] [--port 5001] [--python-bin python3]
-#   ./start_ai_logview.sh --use-index [YYYY-MM-DD]
+#   ./start_ai_logview.sh [--port 5001]
 
-DATE_ARG=""
-HOST="127.0.0.1"
 PORT="5001"
 PYTHON_BIN="python3"
-DATE=""
-USE_INDEX="false"
 
 usage() {
-  echo "Usage: ./start_ai_logview.sh [--host 127.0.0.1] [--port 5001] [--python-bin python3] [--use-index [YYYY-MM-DD]]"
-  echo "       ./start_ai_logview.sh --use-index --date YYYY-MM-DD [--host 127.0.0.1] [--port 5001] [--python-bin python3]"
-  echo "workspaceStorage is configured in this script: WORKSPACE_STORAGE_DIR"
+  echo "Usage: ./start_ai_logview.sh [--port PORT]"
 }
 
 parse_args() {
-  if [[ $# -gt 0 && "$1" != -* ]]; then
-    DATE_ARG="$1"
-    shift
-  fi
-
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -h|--help)
         usage
         exit 0
-        ;;
-      --date)
-        if [[ $# -lt 2 ]]; then
-          echo "missing value for --date" >&2
-          exit 1
-        fi
-        DATE_ARG="$2"
-        shift 2
-        ;;
-      --host)
-        if [[ $# -lt 2 ]]; then
-          echo "missing value for --host" >&2
-          exit 1
-        fi
-        HOST="$2"
-        shift 2
         ;;
       --port)
         if [[ $# -lt 2 ]]; then
@@ -58,18 +30,6 @@ parse_args() {
         fi
         PORT="$2"
         shift 2
-        ;;
-      --python-bin)
-        if [[ $# -lt 2 ]]; then
-          echo "missing value for --python-bin" >&2
-          exit 1
-        fi
-        PYTHON_BIN="$2"
-        shift 2
-        ;;
-      --use-index)
-        USE_INDEX="true"
-        shift
         ;;
       *)
         echo "unknown option: $1" >&2
@@ -81,8 +41,7 @@ parse_args() {
 
 validate_runtime() {
   local workspace_storage="$1"
-  local python_bin="$2"
-  local finder_script="$3"
+  local finder_script="$2"
 
   if [[ ! -d "$workspace_storage" ]]; then
     echo "workspaceStorage not found: $workspace_storage" >&2
@@ -90,8 +49,8 @@ validate_runtime() {
     exit 1
   fi
 
-  if ! command -v "$python_bin" >/dev/null 2>&1; then
-    echo "python command not found: $python_bin" >&2
+  if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+    echo "python command not found: $PYTHON_BIN" >&2
     exit 1
   fi
 
@@ -105,60 +64,19 @@ validate_runtime() {
   fi
 }
 
-build_sessions_index() {
-  local root_dir="$1"
-  local finder_script="$2"
-  local index_file="$3"
-
-  echo "[1/2] Build sessions index for date: $DATE"
-  "$PYTHON_BIN" "$root_dir/src_parse/build_sessions_index.py" \
-    --date "$DATE" \
-    --finder-script "$finder_script" \
-    --output "$index_file" \
-    --ensure-extracted
-}
-
-start_app() {
-  local root_dir="$1"
-  local index_file="$2"
-  local finder_script="$3"
-
-  echo "[2/2] Start app"
-  "$PYTHON_BIN" "$root_dir/src_view/web_app.py" \
-    --sessions-index "$index_file" \
-    --finder-script "$finder_script" \
-    --host "$HOST" \
-    --port "$PORT"
-}
-
 main() {
-  local root_dir=""
-  local workspace_storage=""
-  local index_file=""
-  local finder_script=""
-
   parse_args "$@"
-  DATE="${DATE_ARG:-$(date +%F)}"
+  local root_dir
   root_dir="$(cd "$(dirname "$0")" && pwd)"
-  workspace_storage="$WORKSPACE_STORAGE_DIR"
-  index_file="$root_dir/data/sessions_index.json"
-  finder_script="$root_dir/src_parse/find_debug_logs.sh"
+  local finder_script="$root_dir/src_parse/find_debug_logs.sh"
 
-  validate_runtime "$workspace_storage" "$PYTHON_BIN" "$finder_script"
+  validate_runtime "$WORKSPACE_STORAGE_DIR" "$finder_script"
 
-  if [[ "$USE_INDEX" == "true" ]]; then
-    build_sessions_index "$root_dir" "$finder_script" "$index_file"
-    start_app "$root_dir" "$index_file" "$finder_script"
-  else
-    if [[ -n "$DATE_ARG" ]]; then
-      echo "note: positional date '$DATE_ARG' is ignored unless --use-index is specified" >&2
-    fi
-    echo "[1/1] Start app (live mode: no prebuilt index)"
-    "$PYTHON_BIN" "$root_dir/src_view/web_app.py" \
-      --finder-script "$finder_script" \
-      --host "$HOST" \
-      --port "$PORT"
-  fi
+  echo "Start app: http://127.0.0.1:${PORT}/"
+  "$PYTHON_BIN" "$root_dir/src_view/web_app.py" \
+    --finder-script "$finder_script" \
+    --host "127.0.0.1" \
+    --port "$PORT"
 }
 
 main "$@"

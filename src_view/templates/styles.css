@@ -55,6 +55,13 @@ body {
   font-weight: 700;
   color: var(--accent);
 }
+.app-title-link {
+  text-decoration: none;
+  border: 1px solid #a5d8ff;
+  background: #e7f5ff;
+  border-radius: 999px;
+  padding: 4px 10px;
+}
 .app-summary {
   margin-left: auto;
   font-size: 13px;
@@ -75,6 +82,8 @@ body {
   color: var(--text-muted);
 }
 .app-action {
+  display: inline-flex;
+  align-items: center;
   font-size: 12px;
   font-weight: 700;
   color: #0b7285;
@@ -83,6 +92,10 @@ body {
   background: #e3fafc;
   border-radius: 999px;
   padding: 4px 10px;
+}
+.app-reload-btn {
+  cursor: pointer;
+  font-family: inherit;
 }
 
 /* ── Main ── */
