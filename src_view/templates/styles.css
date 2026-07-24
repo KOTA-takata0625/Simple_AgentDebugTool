@@ -288,6 +288,14 @@ body {
   }
 }
 
+.token-badge.input-growth.metric-muted,
+.token-badge.block-input-growth.metric-muted {
+  background: #f8f9fa;
+  border-color: #d0d7de;
+  color: #6c757d;
+  font-weight: 600;
+}
+
 /* ── Input Growth Badge Styles ── */
 .token-badge.input-growth.metric-check,
 .token-badge.input-growth.metric-caution,
@@ -394,6 +402,17 @@ body {
   font-weight: 600;
   color: #5c4500;
   font-family: "Consolas", monospace;
+  flex: 0 0 auto;
+}
+.tool-summary {
+  font-size: 13px;
+  color: #7a5c00;
+  font-family: "Consolas", "Courier New", monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 .tool-args {
   background: #fffce8;

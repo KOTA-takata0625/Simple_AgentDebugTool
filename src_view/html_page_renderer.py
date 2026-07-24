@@ -1,6 +1,7 @@
 from functools import lru_cache
 import html as html_lib
 import json
+import re
 from pathlib import Path
 from typing import Callable, Optional
 from urllib.parse import quote
@@ -16,6 +17,17 @@ INPUT_GROWTH_CHECK_THRESHOLD = 3000
 INPUT_GROWTH_CAUTION_THRESHOLD = 8000
 INPUT_GROWTH_WARNING_THRESHOLD = 20000
 
+TOOL_DISPLAY_LABELS: dict[str, list[str]] = {
+    "grep_search": ["query"],
+    "memory": ["command", "path"],
+    "list_dir": ["path"],
+    "apply_patch": ["Update File"],
+    "read_file": ["filePath"],
+    "file_search": ["query"],
+    "create_file": ["filePath"],
+}
+MISSING_TOOL_VALUE = "(no value)"
+
 
 def e(text: str) -> str:
     """HTML escape."""
@@ -29,6 +41,52 @@ def _consume_subagent_entry(render_ctx: dict) -> Optional[dict]:
         return None
     render_ctx["subagent_cursor"] = cursor + 1
     return entries[cursor]
+
+
+def _normalize_tool_value(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list)):
+        text = json.dumps(value, ensure_ascii=False)
+    else:
+        text = str(value)
+    return " ".join(text.split())
+
+
+def _extract_update_file_path(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    match = re.search(r"^\*\*\* Update File:\s*(.+?)\s*$", value, flags=re.MULTILINE)
+    return "" if match is None else match.group(1).strip()
+
+
+def _extract_mapped_tool_values(tool_name: str, parsed_args: object, raw_args: object) -> list[str]:
+    normalized_tool_name = tool_name.rsplit(".", 1)[-1]
+    labels = TOOL_DISPLAY_LABELS.get(normalized_tool_name)
+    if not labels:
+        return []
+
+    values: list[str] = []
+    args_dict = parsed_args if isinstance(parsed_args, dict) else {}
+    raw_text = raw_args if isinstance(raw_args, str) else ""
+
+    for label in labels:
+        value_text = ""
+        if label == "Update File":
+            direct = args_dict.get("Update File") if isinstance(args_dict, dict) else None
+            value_text = _normalize_tool_value(direct)
+            if not value_text:
+                input_text = args_dict.get("input") if isinstance(args_dict, dict) else ""
+                value_text = _extract_update_file_path(input_text)
+            if not value_text:
+                value_text = _extract_update_file_path(raw_text)
+        else:
+            if isinstance(args_dict, dict) and label in args_dict:
+                value_text = _normalize_tool_value(args_dict.get(label))
+
+        values.append(value_text or MISSING_TOOL_VALUE)
+
+    return values
 
 
 def _prefixed_uid(render_ctx: dict, base: str) -> str:
@@ -72,6 +130,15 @@ def _severity_class_for_input_growth(input_growth: int) -> str:
     return ""
 
 
+def _badge_class_for_input_growth(input_growth: int) -> str:
+    severity_class = _severity_class_for_input_growth(input_growth)
+    if severity_class:
+        return severity_class
+    if input_growth > 0:
+        return "metric-muted"
+    return ""
+
+
 def _format_optional_number(value: object) -> str:
     if value is None:
         return "—"
@@ -90,6 +157,62 @@ def _format_optional_credits(nano_aiu: object) -> str:
         return "—"
 
 
+def _normalize_attachments(value: object) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+
+    normalized: list[dict[str, str]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+
+        attachment_id = item.get("id")
+        file_path = item.get("filePath")
+        if attachment_id is None and file_path is None:
+            continue
+
+        normalized.append(
+            {
+                "id": "" if attachment_id is None else str(attachment_id),
+                "filePath": "" if file_path is None else str(file_path),
+            }
+        )
+
+    return normalized
+
+
+def _render_attachments_card(lr: dict) -> str:
+    attachments = _normalize_attachments(lr.get("attachments"))
+    if not attachments:
+        return ""
+
+    items_html = []
+    for item in attachments:
+        attachment_id = e(item.get("id") or "(no id)")
+        file_path = e(item.get("filePath") or "(no filePath)")
+        items_html.append(
+            """
+<div class="attachment-item">
+    <div class="attachment-id">"""
+            + attachment_id
+            + """</div>
+    <div class="attachment-path">"""
+            + file_path
+            + """</div>
+</div>"""
+        )
+
+    return (
+        """
+<div class="attachments-card">
+    <div class="attachments-title">Attachments</div>
+"""
+        + "\n".join(items_html)
+        + """
+</div>"""
+    )
+
+
 def render_tool_call_part(
         part: dict,
         idx: int,
@@ -97,61 +220,68 @@ def render_tool_call_part(
         *,
         calc_credits_fn: Callable[[dict], float],
 ) -> str:
-        name = e(part.get("name", ""))
-        raw_name = str(part.get("name", ""))
-        raw_args = part.get("arguments", "")
-        try:
-                parsed = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
-                args_str = json.dumps(parsed, ensure_ascii=False, indent=2)
-        except Exception:
-                args_str = str(raw_args)
-        uid = _prefixed_uid(render_ctx, f"tc-{idx}-{name}")
-        subagent_panel_html = ""
+    name = e(part.get("name", ""))
+    raw_name = str(part.get("name", ""))
+    raw_args = part.get("arguments", "")
+    parsed: object = raw_args
+    try:
+        parsed = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+        args_str = json.dumps(parsed, ensure_ascii=False, indent=2)
+    except Exception:
+        args_str = str(raw_args)
 
-        if raw_name == "runSubagent" and render_ctx.get("enable_subagent_panel", True):
-                entry = _consume_subagent_entry(render_ctx)
-                panel_uid = f"{uid}-subagent-panel"
-                btn_uid = f"{uid}-subagent-btn"
+    summary_values = _extract_mapped_tool_values(raw_name, parsed, raw_args)
+    summary_html = ""
+    if summary_values:
+        summary_html = f'<span class="tool-summary">{e(" ".join(summary_values))}</span>'
 
-                if entry is not None:
-                        file_name = e(entry.get("file_name", ""))
-                        line_count = entry.get("line_count", 0)
-                        sub_blocks = entry.get("blocks", [])
-                        sub_total = float(entry.get("total_credits", 0.0) or 0.0)
-                        sub_count = len(sub_blocks)
-                        sub_title = e((entry.get("session_title") or {}).get("content", ""))
+    uid = _prefixed_uid(render_ctx, f"tc-{idx}-{name}")
+    subagent_panel_html = ""
 
-                        if render_ctx.get("track_subagent_credits", False):
-                                current_block = render_ctx.get("current_block_idx")
-                                if current_block is not None:
-                                        block_map = render_ctx.setdefault("block_subagent_credits", {})
-                                        block_map[current_block] = block_map.get(current_block, 0.0) + sub_total
+    if raw_name == "runSubagent" and render_ctx.get("enable_subagent_panel", True):
+        entry = _consume_subagent_entry(render_ctx)
+        panel_uid = f"{uid}-subagent-panel"
+        btn_uid = f"{uid}-subagent-btn"
 
-                                current_pair = render_ctx.get("current_pair_key")
-                                if current_pair is not None:
-                                        pair_map = render_ctx.setdefault("pair_subagent_credits", {})
-                                        pair_map[current_pair] = pair_map.get(current_pair, 0.0) + sub_total
+        if entry is not None:
+            file_name = e(entry.get("file_name", ""))
+            line_count = entry.get("line_count", 0)
+            sub_blocks = entry.get("blocks", [])
+            sub_total = float(entry.get("total_credits", 0.0) or 0.0)
+            sub_count = len(sub_blocks)
+            sub_title = e((entry.get("session_title") or {}).get("content", ""))
 
-                                render_ctx["consumed_subagent_total"] = render_ctx.get("consumed_subagent_total", 0.0) + sub_total
+            if render_ctx.get("track_subagent_credits", False):
+                current_block = render_ctx.get("current_block_idx")
+                if current_block is not None:
+                    block_map = render_ctx.setdefault("block_subagent_credits", {})
+                    block_map[current_block] = block_map.get(current_block, 0.0) + sub_total
 
-                        sub_ctx = {
-                                "subagent_entries": [],
-                                "subagent_cursor": 0,
-                                "id_prefix": f"{entry.get('id', 'subagent')}-",
-                                "enable_subagent_panel": False,
-                                "track_subagent_credits": False,
-                                "block_subagent_credits": {},
-                                "pair_subagent_credits": {},
-                                "current_block_idx": None,
-                                "current_pair_key": None,
-                                "consumed_subagent_total": 0.0,
-                        }
-                        sub_blocks_html = "\n".join(
-                                render_block(b, i, sub_ctx, calc_credits_fn=calc_credits_fn)
-                                for i, b in enumerate(sub_blocks)
-                        )
-                        title_html = f' · <span class="subagent-title">{sub_title}</span>' if sub_title else ""
-                        subagent_panel_html = f"""
+                current_pair = render_ctx.get("current_pair_key")
+                if current_pair is not None:
+                    pair_map = render_ctx.setdefault("pair_subagent_credits", {})
+                    pair_map[current_pair] = pair_map.get(current_pair, 0.0) + sub_total
+
+                render_ctx["consumed_subagent_total"] = render_ctx.get("consumed_subagent_total", 0.0) + sub_total
+
+            sub_ctx = {
+                "subagent_entries": [],
+                "subagent_cursor": 0,
+                "id_prefix": f"{entry.get('id', 'subagent')}-",
+                "enable_subagent_panel": False,
+                "track_subagent_credits": False,
+                "block_subagent_credits": {},
+                "pair_subagent_credits": {},
+                "current_block_idx": None,
+                "current_pair_key": None,
+                "consumed_subagent_total": 0.0,
+            }
+            sub_blocks_html = "\n".join(
+                render_block(b, i, sub_ctx, calc_credits_fn=calc_credits_fn)
+                for i, b in enumerate(sub_blocks)
+            )
+            title_html = f' · <span class="subagent-title">{sub_title}</span>' if sub_title else ""
+            subagent_panel_html = f"""
     <div class="subagent-action-row">
         <button class="subagent-toggle-btn" id="{btn_uid}" onclick="event.stopPropagation();toggleSubagentPanel('{panel_uid}', '{btn_uid}')">詳細を開く</button>
     </div>
@@ -160,17 +290,18 @@ def render_tool_call_part(
         <div class="subagent-panel-summary">{sub_count} blocks · {sub_total:.1f} total credits</div>
         <div class="subagent-rendered">{sub_blocks_html}</div>
     </div>"""
-                else:
-                        subagent_panel_html = """
+        else:
+            subagent_panel_html = """
     <div class="subagent-action-row">
         <span class="subagent-missing">対応する subAgent JSONL が見つかりません</span>
     </div>"""
 
-        return f"""
+    return f"""
 <div class="tool-call">
     <div class="tool-call-header" onclick="toggleDetail('{uid}')">
         <span class="tool-icon">⚙</span>
         <span class="tool-name">{name}</span>
+        {summary_html}
         <span class="toggle-arrow" id="{uid}-arrow">▶</span>
     </div>
     <pre class="tool-args" id="{uid}" style="display:none">{e(args_str)}</pre>
@@ -265,9 +396,10 @@ def render_llm_request(lr: dict, body_uid: str, subagent_credits: float = 0.0) -
         try:
             growth_val = int(input_growth)
             growth_severity_class = _severity_class_for_input_growth(growth_val)
+            growth_badge_class = _badge_class_for_input_growth(growth_val)
             input_severity_class = growth_severity_class
-            if growth_severity_class:
-                input_growth_html = f'<span class="token-badge input-growth {growth_severity_class}">in +{growth_val:,}</span>'
+            if growth_badge_class:
+                input_growth_html = f'<span class="token-badge input-growth {growth_badge_class}">in +{growth_val:,}</span>'
         except (TypeError, ValueError):
             pass
 
@@ -285,10 +417,10 @@ def render_llm_request(lr: dict, body_uid: str, subagent_credits: float = 0.0) -
         <span class="model-name">{model}</span>
         <span class="credits-inline">{credits_display} credits</span>
         <span class="token-badge input {input_severity_class}">in {input_display}</span>
+        {input_growth_html}
         <span class="token-badge cached {cached_severity_class}">cached {cached_display}</span>
         <span class="token-badge output {output_severity_class}">out {output_display}</span>
         {cache_rate_html}
-        {input_growth_html}
         {subagent_html}
         <span class="toggle-arrow" id="{body_uid}-arrow">▶</span>
     </div>
@@ -302,79 +434,82 @@ def render_block(
         *,
         calc_credits_fn: Callable[[dict], float],
 ) -> str:
-        content = block.get("user_text", "")
+    content = block.get("user_text", "")
 
-        track_sub = render_ctx.get("track_subagent_credits", False)
+    track_sub = render_ctx.get("track_subagent_credits", False)
+    if track_sub:
+        render_ctx["current_block_idx"] = block_idx
+
+    pairs_html = []
+    for i, pair in enumerate(block["pairs"]):
+        lr = pair.get("llm_request")
+        ar = pair.get("agent_response")
+        uid = _prefixed_uid(render_ctx, f"pair-body-{block_idx}-{i}")
+
         if track_sub:
-                render_ctx["current_block_idx"] = block_idx
+            render_ctx["current_pair_key"] = (block_idx, i)
 
-        pairs_html = []
-        for i, pair in enumerate(block["pairs"]):
-                lr = pair.get("llm_request")
-                ar = pair.get("agent_response")
-                uid = _prefixed_uid(render_ctx, f"pair-body-{block_idx}-{i}")
+        ar_html = ""
+        if ar:
+            inner = render_agent_response(ar, block_idx * 1000 + i, render_ctx, calc_credits_fn=calc_credits_fn)
+            ar_html = f'<div class="pair-body" id="{uid}" style="display:none">{inner}</div>'
 
-                if track_sub:
-                        render_ctx["current_pair_key"] = (block_idx, i)
+        pair_sub_credits = 0.0
+        if track_sub:
+            pair_sub_credits = float(render_ctx.get("pair_subagent_credits", {}).get((block_idx, i), 0.0) or 0.0)
+            render_ctx["current_pair_key"] = None
 
-                ar_html = ""
-                if ar:
-                        inner = render_agent_response(ar, block_idx * 1000 + i, render_ctx, calc_credits_fn=calc_credits_fn)
-                        ar_html = f'<div class="pair-body" id="{uid}" style="display:none">{inner}</div>'
+        lr_html = render_llm_request(lr, uid, pair_sub_credits) if lr else ""
 
-                pair_sub_credits = 0.0
-                if track_sub:
-                        pair_sub_credits = float(render_ctx.get("pair_subagent_credits", {}).get((block_idx, i), 0.0) or 0.0)
-                        render_ctx["current_pair_key"] = None
-
-                lr_html = render_llm_request(lr, uid, pair_sub_credits) if lr else ""
-
-                pairs_html.append(f"""
+        pairs_html.append(f"""
 <div class="pair-card">
     {lr_html}
     {ar_html}
 </div>""")
 
-        if track_sub:
-                render_ctx["current_block_idx"] = None
+    if track_sub:
+        render_ctx["current_block_idx"] = None
 
-        main_credits = calc_credits_fn(block)
-        sub_credits = 0.0
-        if track_sub:
-                sub_credits = float(render_ctx.get("block_subagent_credits", {}).get(block_idx, 0.0) or 0.0)
-        total_credits = round(main_credits + sub_credits, 1)
+    main_credits = calc_credits_fn(block)
+    sub_credits = 0.0
+    if track_sub:
+        sub_credits = float(render_ctx.get("block_subagent_credits", {}).get(block_idx, 0.0) or 0.0)
+    total_credits = round(main_credits + sub_credits, 1)
 
-        block_input_growth_html = ""
-        block_input_growth = block.get("input_growth")
-        if block_input_growth is not None:
-                try:
-                        growth_val = int(block_input_growth)
-                        growth_class = _severity_class_for_input_growth(growth_val)
-                        if growth_class:
-                                block_input_growth_html = (
-                                        f'<span class="token-badge input-growth {growth_class} block-input-growth">'
-                                        f'in +{growth_val:,}'
-                                        "</span>"
-                                )
-                except (TypeError, ValueError):
-                        pass
+    block_input_growth_html = ""
+    block_input_growth = block.get("input_growth")
+    if block_input_growth is not None:
+        try:
+            growth_val = int(block_input_growth)
+            growth_class = _badge_class_for_input_growth(growth_val)
+            if growth_class:
+                block_input_growth_html = (
+                    f'<span class="token-badge input-growth {growth_class} block-input-growth">'
+                    f'in +{growth_val:,}'
+                    "</span>"
+                )
+        except (TypeError, ValueError):
+            pass
 
-        pairs_combined = "\n".join(pairs_html)
+    pairs_combined = "\n".join(pairs_html)
 
-        msg_text = e(content.strip())
+    msg_text = e(content.strip())
+    block_attachments = {"attachments": block.get("user_request_attachments", [])}
+    attachments_html = _render_attachments_card(block_attachments)
 
-        user_card_html = ""
-        if msg_text:
-                user_card_html = f"""
+    user_card_html = ""
+    if msg_text or attachments_html:
+        user_card_html = f"""
     <div class="user-message-card">
-        <pre class="user-message-text">{msg_text}</pre>
+    <pre class="user-message-text">{msg_text}</pre>
+    {attachments_html}
     </div>"""
 
-        return f"""
+    return f"""
 <section class="block" id="block-{block_idx}">
     <div class="block-header">
-        <span class="total-credits">Total Credits {total_credits:.1f}</span>
-        {block_input_growth_html}
+    <span class="total-credits">Total Credits {total_credits:.1f}</span>
+    {block_input_growth_html}
     </div>
     {user_card_html}
     {pairs_combined}

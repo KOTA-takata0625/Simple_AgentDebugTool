@@ -31,13 +31,38 @@ def _extracted_llm_request_has_missing_model(path: Path) -> bool:
     return False
 
 
-def _should_rebuild_extracted(debug_dir: Path, extracted: Path) -> bool:
+def _extracted_llm_request_has_missing_attachments(path: Path) -> bool:
+    """Return True when legacy extracted data lacks llm_request.attachments key."""
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(event, dict) or event.get("event_type") != "llm_request":
+                    continue
+                if "attachments" not in event:
+                    return True
+    except OSError:
+        return True
+    return False
+
+
+def _should_rebuild_extracted(debug_dir: Path, extracted: Path, parser_script: Path) -> bool:
     main_jsonl = debug_dir / "main.jsonl"
     if not extracted.exists():
         return True
+    if parser_script.exists() and parser_script.stat().st_mtime > extracted.stat().st_mtime:
+        return True
     if main_jsonl.exists() and main_jsonl.stat().st_mtime > extracted.stat().st_mtime:
         return True
-    return _extracted_llm_request_has_missing_model(extracted)
+    if _extracted_llm_request_has_missing_model(extracted):
+        return True
+    return _extracted_llm_request_has_missing_attachments(extracted)
 
 
 def load_events(path: Path) -> list:
@@ -91,13 +116,13 @@ def load_subagent_entries(
 
 def ensure_extracted_main(debug_dir: Path) -> Optional[Path]:
     extracted = debug_dir / "extracted_main.jsonl"
-    if extracted.exists() and not _should_rebuild_extracted(debug_dir, extracted):
-        return extracted
-
     repo_root = Path(__file__).resolve().parents[1]
     parser_script = repo_root / "src_parse" / "extract_log_events.py"
     if not parser_script.exists():
         return None
+
+    if extracted.exists() and not _should_rebuild_extracted(debug_dir, extracted, parser_script):
+        return extracted
 
     if extracted.exists():
         try:

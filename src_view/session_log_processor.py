@@ -7,9 +7,27 @@ from typing import Callable, Optional
 def group_blocks(events: list) -> list:
     """イベントを表示ブロック単位にグループ化する"""
 
+    def merge_attachments(base: list, incoming: object) -> list:
+        if not isinstance(base, list):
+            base = []
+        if not isinstance(incoming, list):
+            return base
+
+        seen = {(str(x.get("id", "")), str(x.get("filePath", ""))) for x in base if isinstance(x, dict)}
+        for item in incoming:
+            if not isinstance(item, dict):
+                continue
+            key = (str(item.get("id", "")), str(item.get("filePath", "")))
+            if key in seen:
+                continue
+            seen.add(key)
+            base.append(item)
+        return base
+
     def new_block(user_text: str = "") -> dict:
         return {
             "user_text": user_text,
+            "user_request_attachments": [],
             "pairs": [],
         }
 
@@ -71,6 +89,11 @@ def group_blocks(events: list) -> list:
         if t == "llm_request":
             if current is None:
                 current = new_block()
+
+            current["user_request_attachments"] = merge_attachments(
+                current.get("user_request_attachments", []),
+                ev.get("attachments"),
+            )
 
             # Calculate request-level input token growth inside a single user message block.
             current_input_tokens = ev.get("inputTokens")

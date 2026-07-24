@@ -2,6 +2,11 @@
 
 このファイルは agentdebuglog_parsetool のバージョン履歴と変更概要を管理します。
 
+## v2.2
+
+- ツール実行行のヘッダ表示を強化し、ツール名の右側に仕様定義済みラベルの値のみを表示する機能を追加
+- 対応ツール: `grep_search`、`memory`、`list_dir`、`apply_patch`、`read_file`、`file_search`、`create_file`
+
 ## v2.1
 
 - モデル利用統計の表示で、`Cache xx.x%` と `out xxxx` のみを対象に閾値ベースの段階色付けを追加（確認・注意・警告）

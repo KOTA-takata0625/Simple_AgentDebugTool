@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -183,6 +184,84 @@ def _extract_agent_response_payload(response: Any) -> Any:
     return extracted
 
 
+_ATTACHMENT_TAG_RE = re.compile(r"<attachment\b([^>]*)>", re.IGNORECASE)
+_ATTACHMENT_ATTR_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([\"'])(.*?)\2")
+
+
+def _parse_user_request_payload(value: Any) -> Any:
+    if isinstance(value, str):
+        parsed = _parse_json_with_truncation_repair(value)
+        if parsed is None:
+            return value
+        return parsed
+    return value
+
+
+def _extract_attachment_pairs_from_text(text: str) -> list[dict[str, str]]:
+    attachments: list[dict[str, str]] = []
+    for match in _ATTACHMENT_TAG_RE.finditer(text):
+        attrs_raw = match.group(1)
+        attrs: dict[str, str] = {}
+        for attr_match in _ATTACHMENT_ATTR_RE.finditer(attrs_raw):
+            key = attr_match.group(1)
+            value = attr_match.group(3)
+            if key in {"id", "filePath"}:
+                attrs[key] = value
+
+        if attrs:
+            attachments.append(attrs)
+    return attachments
+
+
+def _dedupe_attachments(items: list[dict[str, str]]) -> list[dict[str, str]]:
+    deduped: list[dict[str, str]] = []
+    seen: set[tuple[Optional[str], Optional[str]]] = set()
+    for attachment in items:
+        key = (attachment.get("id"), attachment.get("filePath"))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(attachment)
+    return deduped
+
+
+def _extract_input_text_attachments(value: Any) -> list[dict[str, str]]:
+    extracted: list[dict[str, str]] = []
+
+    def walk(node: Any) -> None:
+        if isinstance(node, list):
+            for item in node:
+                walk(item)
+            return
+
+        if isinstance(node, dict):
+            node_type = node.get("type")
+            text_value = node.get("text")
+            content_value = node.get("content")
+
+            if node_type in {"input_text", "text"}:
+                if isinstance(text_value, str):
+                    extracted.extend(_extract_attachment_pairs_from_text(text_value))
+                if isinstance(content_value, str):
+                    extracted.extend(_extract_attachment_pairs_from_text(content_value))
+            else:
+                if isinstance(text_value, str):
+                    extracted.extend(_extract_attachment_pairs_from_text(text_value))
+                if isinstance(content_value, str):
+                    extracted.extend(_extract_attachment_pairs_from_text(content_value))
+
+            for child in node.values():
+                walk(child)
+            return
+
+        if isinstance(node, str):
+            extracted.extend(_extract_attachment_pairs_from_text(node))
+            return
+
+    walk(_parse_user_request_payload(value))
+    return _dedupe_attachments(extracted)
+
+
 def extract_agent_response(event: dict[str, Any]) -> dict[str, Any]:
     attrs = _get_attrs(event)
     return {
@@ -195,6 +274,7 @@ def extract_agent_response(event: dict[str, Any]) -> dict[str, Any]:
 def extract_llm_request(event: dict[str, Any]) -> dict[str, Any]:
     attrs = _get_attrs(event)
     model = _extract_model_name(event, attrs)
+    attachments = _extract_input_text_attachments(attrs.get("userRequest"))
     input_tokens = _extract_metric(
         attrs,
         ("inputTokens",),
@@ -228,6 +308,7 @@ def extract_llm_request(event: dict[str, Any]) -> dict[str, Any]:
     return {
         "event_type": "llm_request",
         "model": model,
+        "attachments": attachments,
         "copilotUsageNanoAiu": nano_aiu,
         "inputTokens": input_tokens,
         "outputTokens": output_tokens,
