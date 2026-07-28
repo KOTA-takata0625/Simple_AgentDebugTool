@@ -2,6 +2,13 @@
 
 このファイルは agentdebuglog_parsetool のバージョン履歴と変更概要を管理します。
 
+## v2.4
+
+- Attachments 表示で、`id`のみ・`filePath`のみ・`file:...` 由来の要素を同一ファイル名ベースで統合し、重複表示を抑制
+- `file:rom_map` と実パス添付が混在するケースでも、1アイテムに集約して表示するように改善
+- 抽出処理で `<attachment>...</attachment>` 本文から `lines 7 to 8` 形式の行範囲を `lineRange` として保持
+- 詳細ビューで `lineRange` を優先して表示し、`rom_map 7-8` のように行番号付きで表示
+
 ## v2.3
 
 - AI Log Viewer の左上タイトル表示をボタン化し、押下時にカレンダー画面（`/`）へ遷移する導線を追加

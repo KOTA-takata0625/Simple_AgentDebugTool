@@ -185,6 +185,7 @@ def _extract_agent_response_payload(response: Any) -> Any:
 
 
 _ATTACHMENT_TAG_RE = re.compile(r"<attachment\b([^>]*)>", re.IGNORECASE)
+_ATTACHMENT_BLOCK_RE = re.compile(r"<attachment\b([^>]*)>(.*?)</attachment>", re.IGNORECASE | re.DOTALL)
 _ATTACHMENT_ATTR_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([\"'])(.*?)\2")
 
 
@@ -198,16 +199,52 @@ def _parse_user_request_payload(value: Any) -> Any:
 
 
 def _extract_attachment_pairs_from_text(text: str) -> list[dict[str, str]]:
-    attachments: list[dict[str, str]] = []
-    for match in _ATTACHMENT_TAG_RE.finditer(text):
-        attrs_raw = match.group(1)
+    def _extract_attachment_attrs(attrs_raw: str) -> dict[str, str]:
         attrs: dict[str, str] = {}
         for attr_match in _ATTACHMENT_ATTR_RE.finditer(attrs_raw):
             key = attr_match.group(1)
             value = attr_match.group(3)
             if key in {"id", "filePath"}:
                 attrs[key] = value
+        return attrs
 
+    def _extract_line_range(content: str) -> str:
+        text_value = content or ""
+        patterns = [
+            r"lines?\s*(\d+)\s*(?:to|-|–|—)\s*(\d+)",
+            r"line\s*(\d+)\s*(?:to|-|–|—)\s*(\d+)",
+            r"行\s*(\d+)\s*(?:から|to|〜|~|-|–|—)\s*(\d+)\s*行",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text_value, flags=re.IGNORECASE)
+            if match:
+                return f"{match.group(1)}-{match.group(2)}"
+
+        single_patterns = [
+            r"line\s*(\d+)",
+            r"行\s*(\d+)",
+        ]
+        for pattern in single_patterns:
+            match = re.search(pattern, text_value, flags=re.IGNORECASE)
+            if match:
+                return match.group(1)
+        return ""
+
+    attachments: list[dict[str, str]] = []
+
+    # </attachment> を含む完全ブロックを優先し、本文から行範囲も抽出する。
+    for block_match in _ATTACHMENT_BLOCK_RE.finditer(text):
+        attrs = _extract_attachment_attrs(block_match.group(1))
+        if not attrs:
+            continue
+        line_range = _extract_line_range(block_match.group(2))
+        if line_range:
+            attrs["lineRange"] = line_range
+        attachments.append(attrs)
+
+    # 後方互換: 開始タグのみの形式も拾う。
+    for match in _ATTACHMENT_TAG_RE.finditer(text):
+        attrs = _extract_attachment_attrs(match.group(1))
         if attrs:
             attachments.append(attrs)
     return attachments
@@ -215,12 +252,15 @@ def _extract_attachment_pairs_from_text(text: str) -> list[dict[str, str]]:
 
 def _dedupe_attachments(items: list[dict[str, str]]) -> list[dict[str, str]]:
     deduped: list[dict[str, str]] = []
-    seen: set[tuple[Optional[str], Optional[str]]] = set()
+    index_by_key: dict[tuple[Optional[str], Optional[str]], int] = {}
     for attachment in items:
         key = (attachment.get("id"), attachment.get("filePath"))
-        if key in seen:
+        if key in index_by_key:
+            existing = deduped[index_by_key[key]]
+            if (not existing.get("lineRange")) and attachment.get("lineRange"):
+                existing["lineRange"] = attachment["lineRange"]
             continue
-        seen.add(key)
+        index_by_key[key] = len(deduped)
         deduped.append(attachment)
     return deduped
 

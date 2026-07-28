@@ -161,6 +161,47 @@ def _normalize_attachments(value: object) -> list[dict[str, str]]:
     if not isinstance(value, list):
         return []
 
+    def _clean_line_range_token(token: str) -> str:
+        match = re.search(r"(\d+(?:\s*-\s*\d+)?)", token)
+        if not match:
+            return ""
+        return re.sub(r"\s+", "", match.group(1))
+
+    def _extract_file_ref_info(attachment_id: str) -> tuple[str, str]:
+        text = attachment_id.strip()
+        if not text:
+            return "", ""
+
+        if text.startswith("file:"):
+            payload = text[len("file:"):].strip()
+            if not payload:
+                return "", ""
+
+            lines = [ln.strip() for ln in payload.splitlines() if ln.strip()]
+            if not lines:
+                return "", ""
+
+            file_name = lines[0]
+            line_tokens = lines[1:]
+
+            if not line_tokens:
+                # file:rom_map 7-8 のような1行表現も許容
+                parts = file_name.split()
+                if len(parts) > 1:
+                    file_name = parts[0]
+                    line_tokens = [" ".join(parts[1:])]
+
+            line_range = ""
+            if line_tokens:
+                if len(line_tokens) >= 2 and line_tokens[0].isdigit() and line_tokens[1].isdigit():
+                    line_range = f"{line_tokens[0]}-{line_tokens[1]}"
+                else:
+                    line_range = _clean_line_range_token(" ".join(line_tokens))
+
+            return file_name.strip(), line_range
+
+        return text, ""
+
     normalized: list[dict[str, str]] = []
     for item in value:
         if not isinstance(item, dict):
@@ -171,14 +212,78 @@ def _normalize_attachments(value: object) -> list[dict[str, str]]:
         if attachment_id is None and file_path is None:
             continue
 
+        raw_id = "" if attachment_id is None else str(attachment_id).strip()
+        raw_path = "" if file_path is None else str(file_path).strip()
+        file_ref_name, file_ref_line_range = _extract_file_ref_info(raw_id)
+        explicit_line_range = "" if item.get("lineRange") is None else str(item.get("lineRange")).strip()
+        line_range = explicit_line_range or file_ref_line_range
+
         normalized.append(
             {
-                "id": "" if attachment_id is None else str(attachment_id),
-                "filePath": "" if file_path is None else str(file_path),
+                "id": raw_id,
+                "filePath": raw_path,
+                "fileRefName": file_ref_name,
+                "lineRange": line_range,
             }
         )
 
-    return normalized
+    # idのみ/filePathのみ/file:xxx(行範囲) を同一ファイルで統合する
+    merged: list[dict[str, str]] = []
+    index_by_name: dict[str, int] = {}
+
+    def _candidate_names(entry: dict[str, str]) -> list[str]:
+        candidates: list[str] = []
+        file_ref_name = entry.get("fileRefName", "").strip()
+        if file_ref_name:
+            candidates.append(file_ref_name)
+        file_path = entry.get("filePath", "").strip()
+        if file_path:
+            candidates.append(Path(file_path).name)
+        raw_id = entry.get("id", "").strip()
+        if raw_id and not raw_id.startswith("file:"):
+            candidates.append(raw_id)
+        return [c for c in candidates if c]
+
+    for entry in normalized:
+        key_idx = None
+        for name in _candidate_names(entry):
+            if name in index_by_name:
+                key_idx = index_by_name[name]
+                break
+
+        if key_idx is None:
+            merged_entry = {
+                "id": entry.get("id", ""),
+                "filePath": entry.get("filePath", ""),
+                "fileRefName": entry.get("fileRefName", ""),
+                "lineRange": entry.get("lineRange", ""),
+            }
+            merged.append(merged_entry)
+            new_idx = len(merged) - 1
+            for name in _candidate_names(merged_entry):
+                index_by_name.setdefault(name, new_idx)
+            continue
+
+        target = merged[key_idx]
+        if not target.get("filePath") and entry.get("filePath"):
+            target["filePath"] = entry["filePath"]
+        if not target.get("lineRange") and entry.get("lineRange"):
+            target["lineRange"] = entry["lineRange"]
+        if (not target.get("fileRefName")) and entry.get("fileRefName"):
+            target["fileRefName"] = entry["fileRefName"]
+
+        target_id = target.get("id", "")
+        incoming_id = entry.get("id", "")
+        # file:xxx よりも素のファイル名idを優先
+        if target_id.startswith("file:") and incoming_id and not incoming_id.startswith("file:"):
+            target["id"] = incoming_id
+        elif not target_id and incoming_id:
+            target["id"] = incoming_id
+
+        for name in _candidate_names(target):
+            index_by_name.setdefault(name, key_idx)
+
+    return merged
 
 
 def _render_attachments_card(lr: dict) -> str:
@@ -188,7 +293,17 @@ def _render_attachments_card(lr: dict) -> str:
 
     items_html = []
     for item in attachments:
-        attachment_id = e(item.get("id") or "(no id)")
+        base_label = (item.get("fileRefName") or item.get("id") or "(no id)").strip()
+        if base_label.startswith("file:"):
+            base_label = base_label[len("file:"):].strip() or base_label
+
+        line_range = (item.get("lineRange") or "").strip()
+        if line_range:
+            header_label = f"{base_label} {line_range}"
+        else:
+            header_label = base_label
+
+        attachment_id = e(header_label)
         file_path = e(item.get("filePath") or "(no filePath)")
         items_html.append(
             """
