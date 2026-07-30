@@ -59,7 +59,7 @@ INFO:     Uvicorn running on http://127.0.0.1:5001 (Press CTRL+C to quit)
 ### セキュリティ運用ガイド
 
 - 既定は `--host 127.0.0.1`（ローカルホストのみ）で運用してください。
-- `--host 0.0.0.0` で公開する場合は、Security Group / NSG / Firewall / Nginx のいずれかで到達元を必ず制限してください。
+- `--host 0.0.0.0` で公開する場合は、Linux Firewall や Nginx 等を用いてアクセス元を制限することを推奨します。
 - 共有用途でも、可能なら IP 制限と認証を併用してください。
 
 ## 詳細ドキュメント
