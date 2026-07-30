@@ -2,6 +2,12 @@
 
 このファイルは agentdebuglog_parsetool のバージョン履歴と変更概要を管理します。
 
+## v2.6
+
+- 起動スクリプトに `--host` 引数を追加し、`./start_ai_logview.sh --host <HOST> --port <PORT>` で起動先ホストを指定可能に改善
+- `-h` の Usage 表示を `--host` 対応に更新
+- README にセキュリティ運用ガイドを追記し、`0.0.0.0` で公開する場合は到達元制限を必須化
+
 ## v2.4
 
 - Attachments 表示で、`id`のみ・`filePath`のみ・`file:...` 由来の要素を同一ファイル名ベースで統合し、重複表示を抑制

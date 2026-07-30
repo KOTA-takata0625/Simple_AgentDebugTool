@@ -7,13 +7,14 @@ set -euo pipefail
 export WORKSPACE_STORAGE_DIR="$HOME/.vscode-server/data/User/workspaceStorage"
 
 # Usage:
-#   ./start_ai_logview.sh [--port 5001]
+#   ./start_ai_logview.sh [--host 127.0.0.1] [--port 5001]
 
 PORT="5001"
+HOST="127.0.0.1"
 PYTHON_BIN="python3"
 
 usage() {
-  echo "Usage: ./start_ai_logview.sh [--port PORT]"
+  echo "Usage: ./start_ai_logview.sh [--host HOST] [--port PORT]"
 }
 
 parse_args() {
@@ -29,6 +30,14 @@ parse_args() {
           exit 1
         fi
         PORT="$2"
+        shift 2
+        ;;
+      --host)
+        if [[ $# -lt 2 ]]; then
+          echo "missing value for --host" >&2
+          exit 1
+        fi
+        HOST="$2"
         shift 2
         ;;
       *)
@@ -72,10 +81,10 @@ main() {
 
   validate_runtime "$WORKSPACE_STORAGE_DIR" "$finder_script"
 
-  echo "Start app: http://127.0.0.1:${PORT}/"
+  echo "Start app: http://${HOST}:${PORT}/"
   "$PYTHON_BIN" "$root_dir/src_view/web_app.py" \
     --finder-script "$finder_script" \
-    --host "127.0.0.1" \
+    --host "$HOST" \
     --port "$PORT"
 }
 
