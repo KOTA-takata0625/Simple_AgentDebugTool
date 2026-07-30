@@ -47,14 +47,14 @@ Usage: ./start_ai_logview.sh [--port PORT]
 
 ```
 $ ./start_ai_logview.sh
-Start app: http://0.0.0.0:5001/
+Start app: http://127.0.0.1:5001/
 INFO:     Started server process [<PID>]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:5001 (Press CTRL+C to quit)
+INFO:     Uvicorn running on http://127.0.0.1:5001 (Press CTRL+C to quit)
 ```
 
-ブラウザで `http://<サーバーIP>:5001/`（ローカル実行時は `http://127.0.0.1:5001/`）にアクセスしてください。
+ブラウザで `http://127.0.0.1:5001/` にアクセスしてください。
 
 ## 詳細ドキュメント
 

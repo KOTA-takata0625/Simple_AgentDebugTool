@@ -2,9 +2,6 @@
 
 このファイルは agentdebuglog_parsetool のバージョン履歴と変更概要を管理します。
 
-## v2.5
-
-- 起動スクリプト `start_ai_logview.sh` から Web アプリ起動時に `--host 0.0.0.0` を渡すように変更
 ## v2.4
 
 - Attachments 表示で、`id`のみ・`filePath`のみ・`file:...` 由来の要素を同一ファイル名ベースで統合し、重複表示を抑制

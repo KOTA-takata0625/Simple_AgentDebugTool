@@ -72,10 +72,10 @@ main() {
 
   validate_runtime "$WORKSPACE_STORAGE_DIR" "$finder_script"
 
-  echo "Start app: http://0.0.0.0:${PORT}/"
+  echo "Start app: http://127.0.0.1:${PORT}/"
   "$PYTHON_BIN" "$root_dir/src_view/web_app.py" \
     --finder-script "$finder_script" \
-     --host "0.0.0.0" \
+    --host "127.0.0.1" \
     --port "$PORT"
 }
 
